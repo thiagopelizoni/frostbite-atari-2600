@@ -5,8 +5,13 @@
   var context = null;
   var master = null;
   var resuming = false;
-  var lastChill = -1;
+  var buffers = {};
+  // Every scheduled source, so stop() can silence sounds that are still playing or yet to start.
+  var playing = new Set();
   var Audio = { muted: false, available: true };
+  // Polynomial counters like the TIA's: 9 bits for hiss, 5 bits for a coarse buzz.
+  var POLY = { hiss: { bits: 9, tap: 4 }, buzz: { bits: 5, tap: 2 } };
+  var CLOCK = 15700;
 
   function oscillator(frequency, type) {
     var source = context.createOscillator();
@@ -49,21 +54,82 @@
     return !!(context && context.state === 'running' && !Audio.muted);
   }
 
+  function noiseBuffer(kind) {
+    if (buffers[kind]) return buffers[kind];
+    var poly = POLY[kind];
+    var length = Math.floor(context.sampleRate);
+    var buffer = context.createBuffer(1, length, context.sampleRate);
+    var data = buffer.getChannelData(0);
+    var mask = (1 << poly.bits) - 1;
+    var state = mask;
+    var hold = context.sampleRate / CLOCK;
+    var count = 0;
+    var value = 1;
+    for (var i = 0; i < length; i++) {
+      count += 1;
+      if (count >= hold) {
+        count -= hold;
+        var feedback = (state ^ (state >> poly.tap)) & 1;
+        state = ((state >> 1) | (feedback << (poly.bits - 1))) & mask;
+        value = state & 1 ? 0.8 : -0.8;
+      }
+      data[i] = value;
+    }
+    buffers[kind] = buffer;
+    return buffer;
+  }
+
+  function envelope(gain, start, duration) {
+    var volume = context.createGain();
+    volume.gain.setValueAtTime(0, start);
+    volume.gain.linearRampToValueAtTime(gain, start + 0.008);
+    volume.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    volume.connect(master);
+    return volume;
+  }
+
+  function track(source, volume) {
+    playing.add(source);
+    source.onended = function () {
+      playing.delete(source);
+      source.disconnect();
+      volume.disconnect();
+    };
+  }
+
   function tone(frequency, endFrequency, duration, gain, offset) {
     if (!ready()) return;
     var start = context.currentTime + (offset || 0);
     var source = oscillator(frequency, 'square');
-    var volume = context.createGain();
+    var volume = envelope(gain, start, duration);
     source.frequency.setValueAtTime(frequency, start);
     source.frequency.exponentialRampToValueAtTime(Math.max(30, endFrequency), start + duration);
-    volume.gain.setValueAtTime(0, start);
-    volume.gain.linearRampToValueAtTime(gain, start + 0.008);
-    volume.gain.exponentialRampToValueAtTime(0.0001, start + duration);
     source.connect(volume);
-    volume.connect(master);
     source.start(start);
     source.stop(start + duration + 0.02);
-    source.onended = function () { source.disconnect(); volume.disconnect(); };
+    track(source, volume);
+  }
+
+  // Noise channel: the LFSR buffer replayed faster or slower bends the pitch like AUDF.
+  function noise(kind, duration, gain, rate, endRate, offset) {
+    if (!ready()) return;
+    var start = context.currentTime + (offset || 0);
+    var source = context.createBufferSource();
+    var volume = envelope(gain, start, duration);
+    source.buffer = noiseBuffer(kind);
+    source.loop = true;
+    source.playbackRate.setValueAtTime(rate, start);
+    if (endRate && endRate !== rate) source.playbackRate.exponentialRampToValueAtTime(endRate, start + duration);
+    source.connect(volume);
+    source.start(start);
+    source.stop(start + duration + 0.03);
+    track(source, volume);
+  }
+
+  function arpeggio(notes, step, length, gain) {
+    notes.forEach(function (frequency, index) {
+      tone(frequency, frequency, length, gain, index * step);
+    });
   }
 
   function jump() { tone(190, 340, 0.07, 0.12); }
@@ -73,34 +139,28 @@
     tone(760, 640, 0.1, 0.12, 0.07);
   }
   function reverse() { tone(110, 70, 0.09, 0.12); }
-  function door() {
-    [330, 440, 554].forEach(function (frequency, index) {
-      tone(frequency, frequency, 0.09, 0.12, index * 0.08);
+  function door() { arpeggio([330, 440, 554], 0.08, 0.09, 0.12); }
+  function enter() { arpeggio([262, 330, 392, 523], 0.05, 0.08, 0.12); }
+  function tally(left) { tone(220 + (16 - left) * 22, 220 + (16 - left) * 22, 0.05, 0.1); }
+  function degree(left) { tone(880 - Math.min(left, 45) * 8, 700, 0.035, 0.08); }
+  function fall() {
+    noise('hiss', 0.5, 0.24, 1.2, 0.3);
+    tone(330, 60, 0.55, 0.08);
+  }
+  function freeze() {
+    noise('hiss', 1.1, 0.12, 2.4, 0.5);
+    tone(160, 45, 1, 0.08);
+  }
+  function caught() {
+    noise('buzz', 0.7, 0.2, 0.6, 0.25);
+    tone(140, 55, 0.7, 0.1);
+  }
+  function extraLife() { arpeggio([523, 659, 784], 0.09, 0.1, 0.12); }
+  function stop() {
+    playing.forEach(function (source) {
+      try { source.stop(); } catch (error) { /* Already stopped. */ }
     });
   }
-  function clear() {
-    [262, 330, 392, 523].forEach(function (frequency, index) {
-      tone(frequency, frequency, 0.12, 0.13, index * 0.1);
-    });
-  }
-  function fall() { tone(360, 55, 0.42, 0.18); }
-  function freeze() { tone(180, 40, 0.7, 0.14); }
-  function caught() { tone(240, 70, 0.36, 0.16); }
-  function extraLife() {
-    [523, 659, 784].forEach(function (frequency, index) {
-      tone(frequency, frequency, 0.1, 0.12, index * 0.09);
-    });
-  }
-  function chill(active) {
-    if (!ready()) return;
-    var tick = Math.floor(context.currentTime * 2.5);
-    if (active && tick !== lastChill) {
-      lastChill = tick;
-      tone(720, 540, 0.05, 0.07);
-    }
-    if (!active) lastChill = -1;
-  }
-  function stop() { lastChill = -1; }
 
   Audio.unlock = unlock;
   Audio.setMuted = setMuted;
@@ -109,12 +169,14 @@
   Audio.fish = fish;
   Audio.reverse = reverse;
   Audio.door = door;
-  Audio.clear = clear;
+  Audio.enter = enter;
+  Audio.tally = tally;
+  Audio.degree = degree;
   Audio.fall = fall;
   Audio.freeze = freeze;
   Audio.caught = caught;
   Audio.extraLife = extraLife;
-  Audio.chill = chill;
+  Audio.noise = noise;
   Audio.stop = stop;
   FB.Audio = Audio;
 })();

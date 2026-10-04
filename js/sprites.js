@@ -1,6 +1,7 @@
 window.FB = window.FB || {};
 
-// '.' is empty. '1', '2' and '3' pick the three inks passed at draw time.
+// '.' is empty; any other character picks an ink from the colour map passed at draw time.
+// Shapes follow the cartridge frames. Bailey and the geese face right, the bear and fish face left.
 window.FB.Sprites = (function () {
   'use strict';
 
@@ -8,124 +9,268 @@ window.FB.Sprites = (function () {
     return bitmap.map(function (row) { return row.split('').reverse().join(''); });
   }
 
+  // h hat, f face, c coat, d boots. The bottom line is the feet line that rests on the ice.
   const bailey = [
-    '..22....',
-    '.2222...',
-    '..212...',
-    '.11111..',
-    '1111111.',
-    '.11111..',
-    '..1.1...',
-    '..1.1...',
-    '.33.33..',
-    '33...33.',
+    '.hhh....',
+    '.hhhh...',
+    'hhhhh...',
+    'hhhhhhh.',
+    'hhhhhhh.',
+    'hhhhhhh.',
+    '.fffff..',
+    '.ffffff.',
+    '..ffff..',
+    '.ccccc..',
+    '.c.cccc.',
+    '.c.cccc.',
+    '.cc.ccc.',
+    '.ccc.cc.',
+    '.cccccc.',
+    '..dd.dd.',
+    '..dd.dd.',
+    'dddddddd',
+  ];
+
+  const baileyWalk = [
+    '.hhh....',
+    '.hhhh...',
+    'hhhhh...',
+    'hhhhhhh.',
+    'hhhhhhh.',
+    'hhhhhhh.',
+    '.fffff..',
+    '.ffffff.',
+    '..ffff..',
+    '.ccccc..',
+    '.c.cccc.',
+    '.c..ccc.',
+    '.ccc.cc.',
+    '.cccccc.',
+    '.cccccc.',
+    '...ddd..',
+    '...ddd..',
+    '...ddd..',
+    'dddddddd',
   ];
 
   const baileyJump = [
-    '..22....',
-    '.2222...',
-    '112.1111',
-    '.111111.',
-    '..1111..',
-    '..1.1...',
-    '.33.33..',
-    '33...33.',
+    '.hhh....',
+    '.hhhh...',
+    'hhhhh...',
+    'hhhhhhh.',
+    'hhhhhhh.',
+    'fffffff.',
+    '.ffffff.',
+    '..ffff..',
+    '.ccccc..',
+    '.c.cccc.',
+    '.c....c.',
+    '.cccccc.',
+    '.cccccc.',
+    '...c.c..',
+    '.dddddd.',
   ];
 
   const bear = [
-    '2..22..2',
-    '.222222.',
-    '22222222',
-    '22122122',
-    '22222222',
-    '.222222.',
-    '.22..22.',
-    '.22..22.',
-  ];
-
-  const fish = [
-    '..1111..',
-    '.111221.',
-    '11111111',
-    '.111111.',
+    [
+      '....##........',
+      '....##........',
+      '..########....',
+      '..##########..',
+      '..############',
+      '##############',
+      '##############',
+      '..############',
+      '##..##########',
+      '....##########',
+      '....##########',
+      '....####..####',
+      '....####..####',
+      '....####..####',
+      '....##....##..',
+      '..####..####..',
+    ],
+    [
+      '....##........',
+      '....##........',
+      '..########....',
+      '..##########..',
+      '..############',
+      '.#############',
+      '##############',
+      '..############',
+      '.#..##########',
+      '....##########',
+      '....##########',
+      '....####..####',
+      '.....####..###',
+      '.....####..###',
+      '......##...##.',
+      '....####..###.',
+    ],
   ];
 
   const goose = [
     [
-      '..111111',
-      '.1111111',
-      '11111.31',
-      '.1111...',
-      '..11....',
+      '###..#..',
+      '..##.##.',
+      '######..',
+      '.####...',
+      '..##....',
+      '.#......',
     ],
     [
-      '111111..',
-      '.111111.',
-      '11111.31',
-      '.1111...',
-      '..11....',
+      '......#.',
+      '.....###',
+      '######..',
+      '.####...',
+      '..##....',
+      '.##.....',
+      '##......',
     ],
   ];
 
   const crab = [
-    '3......3',
-    '.111111.',
-    '11111111',
-    '.1.11.1.',
-    '..1..1..',
+    [
+      '.#....#.',
+      '###..###',
+      '##....##',
+      '#......#',
+      '#.####.#',
+      '.##.#.#.',
+      '###.#.##',
+      '########',
+    ],
+    [
+      '#......#',
+      '#.#..#.#',
+      '##....##',
+      '#......#',
+      '#.####.#',
+      '.##.#.#.',
+      '###.#.##',
+      '########',
+    ],
   ];
 
   const clam = [
     [
-      '.222222.',
-      '22211222',
-      '.222222.',
+      '..####..',
+      '.######.',
+      '########',
+      '##.#.#.#',
+      '#.#.#.##',
+      '########',
+      '.######.',
+      '..####..',
     ],
     [
-      '222..222',
-      '2......2',
-      '222..222',
+      '..####..',
+      '.######.',
+      '#.#.#.##',
+      '#.......',
+      '#.......',
+      '##.#.#.#',
+      '.######.',
+      '..####..',
     ],
   ];
 
-  const splash = [
-    '...1.1..',
-    '.1.....1',
-    '1..111..',
-    '.111111.',
-    '11111111',
-    '.111111.',
+  const fish = [
+    [
+      '..###..#',
+      '.###..##',
+      '#.#####.',
+      '######..',
+      '.######.',
+      '####..##',
+      '..###..#',
+    ],
+    [
+      '..##....',
+      '.####.##',
+      '#.######',
+      '######..',
+      '########',
+      '.####.##',
+      '..##....',
+    ],
   ];
 
   const magic = [
-    '...1....',
-    '..1111..',
-    '.112211.',
-    '11111111',
-    '.111111.',
+    '#..###..',
+    '##..###.',
+    '.#####.#',
+    '..######',
+    '.######.',
+    '##..####',
+    '#..###..',
+  ];
+
+  // The igloo grows in the cartridge's order: [x, y, w, h] from the igloo's top-left corner.
+  const iglooBlocks = [
+    [0, 16, 8, 4], [8, 16, 8, 4], [16, 16, 8, 4], [24, 16, 8, 4],
+    [24, 12, 8, 4], [16, 12, 8, 4], [8, 12, 8, 4], [0, 12, 8, 4],
+    [0, 8, 8, 4], [8, 8, 8, 4], [16, 8, 8, 4], [24, 8, 8, 4],
+    [16, 4, 12, 4], [4, 4, 24, 4], [8, 0, 16, 4],
+  ];
+  const iglooDoor = [[12, 12, 6, 1], [11, 13, 8, 7]];
+
+  // Chunky score digits, 8 px cells.
+  const digits = {
+    0: ['.####...', '##..##..', '##..##..', '##..##..', '##..##..', '##..##..', '##..##..', '.####...'],
+    1: ['..##....', '.###....', '..##....', '..##....', '..##....', '..##....', '..##....', '.####...'],
+    2: ['.####...', '#...##..', '....##..', '....##..', '.####...', '##......', '##......', '######..'],
+    3: ['.####...', '#...##..', '....##..', '...##...', '...##...', '....##..', '#...##..', '.####...'],
+    4: ['...##...', '..###...', '.#.##...', '#..##...', '######..', '...##...', '...##...', '...##...'],
+    5: ['######..', '##......', '##......', '#####...', '....##..', '....##..', '#...##..', '#####...'],
+    6: ['.####...', '##...#..', '##......', '#####...', '##..##..', '##..##..', '##..##..', '.####...'],
+    7: ['######..', '#....#..', '....##..', '...##...', '..##....', '..##....', '..##....', '..##....'],
+    8: ['.####...', '##..##..', '##..##..', '.####...', '.####...', '##..##..', '##..##..', '.####...'],
+    9: ['.####...', '##..##..', '##..##..', '##..##..', '.#####..', '....##..', '#...##..', '.####...'],
+  };
+
+  const degree = ['###', '#.#', '###'];
+
+  // Rainbow stripes plus lettering, as on every Activision cartridge of the period.
+  const signature = [
+    'rrrrrrrrrrrrrrrrrrrrw.wwwwwwww....wwwwwww.........',
+    'oooooooooooooooooooww....w...w...ww...............',
+    'oooooooooooooooooowww.ww.w.w.w..ww..www.w.www.w..w',
+    'yyyyyyyyyyyyyyyyyww.w.w..w.w.w.ww.w.w...w.w.w.ww.w',
+    'ggggggggggggggggwwwww.w..w.w.www..w.www.w.w.w.wwww',
+    'gggggggggggggggww...w.w..w.w.ww...w...w.w.w.w.w.ww',
+    'bbbbbbbbbbbbbbww....w.ww.w.w.w....w.www.w.www.w..w',
   ];
 
   return {
     bailey: bailey,
     baileyLeft: mirror(bailey),
+    baileyWalk: baileyWalk,
+    baileyWalkLeft: mirror(baileyWalk),
     baileyJump: baileyJump,
     baileyJumpLeft: mirror(baileyJump),
-    bear: bear,
-    bearLeft: mirror(bear),
-    fish: fish,
-    goose: goose[0],
-    gooseFlap: goose[1],
+    bearFrames: bear,
+    bearRight: bear.map(mirror),
     gooseFrames: goose,
-    crab: crab,
-    clam: clam[0],
-    clamOpen: clam[1],
-    splash: splash,
+    gooseLeft: goose.map(mirror),
+    crabFrames: crab,
+    clamFrames: clam,
+    clamRight: clam.map(mirror),
+    fishFrames: fish,
+    fishRight: fish.map(mirror),
     magic: magic,
+    iglooBlocks: iglooBlocks,
+    iglooDoor: iglooDoor,
+    digits: digits,
+    degree: degree,
+    signature: signature,
     mirror: mirror,
   };
 })();
 
-// 5×7 bitmap letters for the HUD and the title cards.
+// 5×7 bitmap letters for the title and pause cards. A glyph is a list of rows, or { top, rows } when
+// it reaches above the line (accents) or below it (cedilla).
 window.FB.Font = {
   A: ['01110', '11011', '11011', '11111', '11011', '11011', '11011'],
   B: ['11110', '11011', '11011', '11110', '11011', '11011', '11110'],
@@ -172,5 +317,20 @@ window.FB.Font = {
   ' ': ['00000', '00000', '00000', '00000', '00000', '00000', '00000'],
   '°': ['01100', '10010', '10010', '01100', '00000', '00000', '00000'],
 };
+
+// Accented capitals for Portuguese text: the base letter with a mark drawn above it, or a cedilla below.
+(function (font) {
+  'use strict';
+  const marks = { '~': ['01101', '10110'], '´': ['00110', '01100'], '^': ['00100', '01010'], '`': ['01100', '00110'] };
+  const accented = {
+    'Ã': ['A', '~'], 'Õ': ['O', '~'], 'Á': ['A', '´'], 'É': ['E', '´'], 'Í': ['I', '´'], 'Ó': ['O', '´'],
+    'Ú': ['U', '´'], 'Â': ['A', '^'], 'Ê': ['E', '^'], 'Ô': ['O', '^'], 'À': ['A', '`'],
+  };
+  Object.keys(accented).forEach(function (letter) {
+    const parts = accented[letter];
+    font[letter] = { top: -3, rows: marks[parts[1]].concat(['00000'], font[parts[0]]) };
+  });
+  font['Ç'] = { top: 0, rows: font.C.concat(['00100', '01100']) };
+})(window.FB.Font);
 
 window.FB.sprites = window.FB.Sprites;

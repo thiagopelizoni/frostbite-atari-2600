@@ -5,6 +5,8 @@
   var keys = Object.create(null);
   var buttonKeys = Object.create(null);
   var pointers = new Map();
+  // Presses seen since the last poll, so a tap released before the next frame still counts once.
+  var tapped = Object.create(null);
   var callback = function () {};
   var initialized = false;
   var active = true;
@@ -54,8 +56,21 @@
       if (event.pointerType === 'mouse' && event.button !== 0) return;
       event.preventDefault();
       unlockAudio();
+      // A mouse click on the TV only gives it the keyboard; tapping it is fire on touch screens.
+      if (element.id === 'screen' && event.pointerType === 'mouse') {
+        element.focus({ preventScroll: true });
+        return;
+      }
       if (event.pointerType !== 'mouse') document.body.classList.add('touch');
+      // While paused, the TV and the red button resume, as the card says; the press is spent on that,
+      // so it is not also fire the moment the game runs again.
+      if (control === 'fire' && FB.game && FB.game.phase === 'paused') {
+        callback('pause');
+        if (element.id === 'screen') element.focus({ preventScroll: true });
+        return;
+      }
       pointers.set(event.pointerId, { control: control, direction: control !== 'fire' });
+      tapped[control] = true;
       try { element.setPointerCapture(event.pointerId); } catch (error) { /* A canceled pointer cannot be captured. */ }
       if (element.id === 'screen') element.focus({ preventScroll: true });
       heldClasses();
@@ -78,6 +93,7 @@
         event.preventDefault();
         unlockAudio();
         buttonKeys[control + event.code] = control;
+        tapped[control] = true;
         heldClasses();
       });
       element.addEventListener('keyup', function (event) { delete buttonKeys[control + event.code]; heldClasses(); });
@@ -102,7 +118,10 @@
       if (!direction && !action) return;
       event.preventDefault();
       unlockAudio();
-      if (direction) keys[event.code] = true;
+      if (direction) {
+        keys[event.code] = true;
+        tapped[direction] = true;
+      }
       if (action && !event.repeat && !keys[event.code]) {
         keys[event.code] = true;
         callback(action);
@@ -128,6 +147,9 @@
       button.addEventListener('click', function () {
         unlockAudio();
         callback(button.dataset.action);
+        // Hand the keyboard back to the game, or Enter and Space would press this button again.
+        var screen = document.getElementById('screen');
+        if (screen) screen.focus({ preventScroll: true });
       });
     });
     document.querySelectorAll('#pad [data-dir]').forEach(function (button) { pointerControl(button, button.dataset.dir); });
@@ -138,14 +160,18 @@
 
   function poll() {
     state.left = state.right = state.up = state.down = state.fire = false;
+    var taps = tapped;
+    tapped = Object.create(null);
     if (!active || document.hidden) return state;
+    Object.keys(taps).forEach(function (control) { state[control] = true; });
     Object.keys(keys).forEach(function (code) {
       if (keyDirections[code]) state[keyDirections[code]] = true;
     });
     Object.keys(buttonKeys).forEach(function (code) { state[buttonKeys[code]] = true; });
     pointers.forEach(function (pointer) { if (pointer.control) state[pointer.control] = true; });
     var start = false;
-    var gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    var gamepads = [];
+    try { gamepads = (navigator.getGamepads && navigator.getGamepads()) || []; } catch (error) { /* Blocked by a permissions policy. */ }
     for (var i = 0; i < gamepads.length; i++) {
       var pad = gamepads[i];
       if (!pad || !pad.connected) continue;
@@ -172,6 +198,7 @@
   function clear() {
     keys = Object.create(null);
     buttonKeys = Object.create(null);
+    tapped = Object.create(null);
     pointers.clear();
     state.left = state.right = state.up = state.down = state.fire = false;
     padStart = false;

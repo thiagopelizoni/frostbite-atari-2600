@@ -5,12 +5,25 @@ window.FB = window.FB || {};
 
   const C = FB.Config;
   const T = C.TUNE;
+  const L = C.LAYOUT;
   const W = FB.World;
+  const S = FB.Sprites;
   const silent = new Proxy({}, { get: () => () => {} });
   const controls = ['left', 'right', 'up', 'down', 'fire'];
+  const FRAME = 1 / 60;
+  // Bailey's height above his starting lane, one entry per frame of the 28-frame jump.
+  const HOP_DOWN = [-2, -2, -4, -4, -5, -5, -5, -5, -5, -5, -5, -5, -5, -5, -4, -4, -2, -2, 1, 1, 5, 5, 10, 10, 15, 15, 20, 20, 26];
+  const HOP_UP = [-6, -6, -11, -11, -16, -16, -21, -21, -25, -25, -28, -28, -30, -30, -31, -31, -31, -31, -31, -31, -31, -31, -31, -31, -30, -30, -28, -28, -26];
 
   function clamp(value, low, high) {
     return Math.max(low, Math.min(high, value));
+  }
+
+  // Moves from `from` toward `to` but never further out past low/high; nothing snaps back inside.
+  function bound(from, to, low, high) {
+    if (to < from) return Math.max(to, Math.min(from, low));
+    if (to > from) return Math.min(to, Math.max(from, high));
+    return to;
   }
 
   function modeLabel(mode) {
@@ -19,7 +32,19 @@ window.FB = window.FB || {};
     return `Jogo ${mode} · ${advanced ? 'avançado' : 'regular'}, ${pair ? 'dois jogadores' : 'um jogador'}`;
   }
 
-  // The simulation never touches the DOM. Coordinates are Atari pixels.
+  // The lines of the card drawn over the screen, or null. Touch screens have no Enter key, so they are
+  // told to tap: the screen and the red button both start the game.
+  function cardLines(game, touch) {
+    const phase = game.phase;
+    const start = touch ? 'TOQUE PARA JOGAR' : 'ENTER OU BOTÃO';
+    if (phase === 'title') return ['FROSTBITE', start, `RECORDE ${game.highScore}`];
+    if (phase === 'gameover') return ['FIM DE JOGO', start, `RECORDE ${game.highScore}`];
+    if (phase === 'paused') return ['PAUSA', touch ? 'TOQUE PARA CONTINUAR' : 'P PARA CONTINUAR'];
+    if (phase === 'ready') return [`JOGADOR ${game.player + 1}`, 'MOVA O JOYSTICK'];
+    return null;
+  }
+
+  // The simulation never touches the DOM. Coordinates are Atari pixels; see config.js for lanes.
   class Game {
     constructor(options = {}) {
       this.audio = options.audio || silent;
@@ -34,25 +59,30 @@ window.FB = window.FB || {};
       this.time = 0;
       this.highScore = 0;
       this.startArmed = true;
-      this.banner = '';
       this.lastBonus = 0;
       this.magicFish = false;
-      this.badge = false;
       this.level = 1;
       this.score = 0;
       this.lives = T.startLives;
-      this.nextExtraLife = T.extraLifeEvery;
       this.blocks = 0;
       this.degrees = C.startDegrees(1);
+      this.chill = 0;
+      this.hold = 0;
+      this.breath = 0;
       this.lane = 0;
       this.x = T.startX;
       this.facing = 1;
       this.jump = null;
-      this.hopLock = 0;
+      this.walkClock = 0;
+      this.pushedBy = null;
       this.fireLatch = false;
-      this.clearTimer = 0;
+      this.round = 0;
+      this.readyTimer = 0;
       this.deathTimer = 0;
+      this.death = null;
+      this.clear = null;
       this.rows = [];
+      this.lanes = [];
       this.enemies = [];
       this.fish = [];
       this.bear = null;
@@ -62,29 +92,35 @@ window.FB = window.FB || {};
     preview() {
       this.level = C.startingLevel(this.gameMode);
       this.blocks = 0;
-      this.degrees = C.startDegrees(this.level);
-      this.lane = 0;
-      this.x = 36;
-      this.facing = 1;
-      this.jump = null;
-      this.loadArctic();
+      this.beginLife();
     }
 
     loadArctic() {
-      const arctic = W.create(this.level);
+      const arctic = W.create(this.level, this.round);
       this.rows = arctic.rows;
+      this.lanes = arctic.lanes;
       this.enemies = arctic.enemies;
       this.fish = arctic.fish;
       this.bear = arctic.bear;
     }
 
     capture() {
-      return {
-        score: this.score,
-        lives: this.lives,
-        level: this.level,
-        nextExtraLife: this.nextExtraLife,
-      };
+      return { score: this.score, lives: this.lives, level: this.level, blocks: this.blocks };
+    }
+
+    restore(builder) {
+      this.score = builder.score;
+      this.lives = builder.lives;
+      this.level = builder.level;
+      this.blocks = builder.blocks;
+    }
+
+    get reserves() {
+      return clamp(this.lives - 1, 0, T.maxLives - 1);
+    }
+
+    get architect() {
+      return this.score >= T.architectScore;
     }
 
     displayedDegrees() {
@@ -96,15 +132,15 @@ window.FB = window.FB || {};
     }
 
     inDoor() {
-      return this.x >= T.doorX && this.x <= T.doorX + T.doorW;
+      return this.x >= T.doorMin && this.x <= T.doorMax;
     }
 
     inHideout() {
-      return this.lane === 5 && this.x <= T.hideout;
+      return this.lane === 0 && !this.jump && this.x <= T.hideout;
     }
 
     onIce() {
-      return this.lane >= 1 && this.lane <= 4;
+      return this.lane >= 1 && this.lane <= 4 && !this.jump;
     }
 
     rowOf(lane) {
@@ -112,26 +148,25 @@ window.FB = window.FB || {};
     }
 
     pieces(row) {
-      return W.segments(row.pattern, row.offset);
+      return W.pieces(row);
     }
 
-    supported(row, x, half) {
-      return W.feetOn(this.pieces(row), x, half == null ? T.half : half);
+    supported(row, x) {
+      return W.supportAt(row, x == null ? this.x : x);
     }
 
     surface(lane) {
-      const spec = C.LANES[lane];
-      // The upper bank is drawn under the score, so Bailey stands on its lower edge.
-      if (lane === 5) return spec.top + spec.height - 2;
-      return spec.top;
+      return C.LANES[lane].feet;
     }
 
     footY() {
       if (!this.jump) return this.surface(this.lane);
-      const from = this.surface(this.jump.from);
-      const to = this.surface(this.jump.to);
-      const u = clamp(this.jump.t / this.jump.duration, 0, 1);
-      return from + (to - from) * u - Math.sin(u * Math.PI) * 8;
+      const table = this.jump.to > this.jump.from ? HOP_DOWN : HOP_UP;
+      const frame = clamp(this.jump.t / FRAME, 0, table.length - 1);
+      const low = Math.floor(frame);
+      const high = Math.min(table.length - 1, low + 1);
+      const rise = table[low] + (table[high] - table[low]) * (frame - low);
+      return this.surface(this.jump.from) + rise;
     }
 
     start() {
@@ -139,29 +174,39 @@ window.FB = window.FB || {};
       this.level = C.startingLevel(this.gameMode);
       this.score = 0;
       this.lives = T.startLives;
-      this.nextExtraLife = T.extraLifeEvery;
-      this.magicFish = false;
-      this.badge = false;
       this.reason = '';
-      this.banner = '';
       this.lastBonus = 0;
+      this.blocks = 0;
+      this.round = 0;
       this.players = [this.capture()];
       if (C.twoPlayers(this.gameMode)) this.players.push(this.capture());
-      this.beginRound();
+      this.beginLevel();
       this.phase = 'ready';
+      this.readyTimer = T.readyTime;
       this.audio.stop();
     }
 
-    beginRound() {
+    beginLevel() {
       this.blocks = 0;
+      this.beginLife();
+    }
+
+    // A new life keeps the igloo; the temperature, the floes and the creatures start over.
+    beginLife() {
+      this.round += 1;
       this.degrees = C.startDegrees(this.level);
+      this.chill = 0;
+      this.hold = T.floeHold;
+      this.breath = 0;
       this.lane = 0;
       this.x = T.startX;
       this.facing = 1;
       this.jump = null;
-      this.hopLock = 0;
-      this.fireLatch = false;
-      this.badge = this.level > 20;
+      this.walkClock = 0;
+      this.pushedBy = null;
+      this.death = null;
+      this.clear = null;
+      this.magicFish = this.level >= T.magicFishLevel;
       this.loadArctic();
     }
 
@@ -189,44 +234,34 @@ window.FB = window.FB || {};
       }
     }
 
+    // The score rolls over at a million like the cartridge's six BCD digits.
     scorePoints(points) {
       if (!points) return;
-      this.score = Math.min(T.scoreCap, this.score + points);
-      while (this.score >= this.nextExtraLife) {
-        this.nextExtraLife += T.extraLifeEvery;
+      const before = this.score;
+      const after = before + points;
+      const earned = Math.floor(after / T.extraLifeEvery) - Math.floor(before / T.extraLifeEvery);
+      for (let i = 0; i < earned; i++) {
         if (this.lives < T.maxLives) {
           this.lives += 1;
           this.audio.extraLife();
         }
       }
-      if (this.score >= T.magicFishScore) this.magicFish = true;
+      this.score = after % T.scoreWrap;
       if (this.score > this.highScore) {
         this.highScore = this.score;
         this.onScore(this.score);
       }
     }
 
-    addBlock() {
-      if (this.blocks >= T.blocksNeeded) return;
-      this.blocks += 1;
-      this.scorePoints(C.icePoints(this.level));
-      this.audio.block();
-      if (this.blocks === T.blocksNeeded) this.audio.door();
-    }
-
+    // Fire turns only the row underfoot. It costs a block until the igloo is complete.
     reverse() {
-      let acted = false;
-      if (this.onIce()) {
-        this.rowOf(this.lane).dir *= -1;
-        acted = true;
-      }
-      if (this.bear) {
-        this.bear.dir *= -1;
-        acted = true;
-      }
-      if (!acted) return;
-      if (this.blocks > 0 && this.blocks < T.blocksNeeded) this.blocks -= 1;
+      if (!this.onIce()) return false;
+      const complete = this.doorOpen();
+      if (!complete && this.blocks <= 0) return false;
+      this.rowOf(this.lane).dir *= -1;
+      if (!complete) this.blocks -= 1;
       this.audio.reverse();
+      return true;
     }
 
     die(reason) {
@@ -234,6 +269,13 @@ window.FB = window.FB || {};
       this.phase = 'dying';
       this.reason = reason;
       this.deathTimer = T.deathTime;
+      this.death = {
+        reason: reason,
+        t: 0,
+        feet: this.footY(),
+        pushedBy: reason === 'mar' ? this.pushedBy : null,
+        grip: reason === 'urso' && this.bear ? this.x - this.bear.x : 0,
+      };
       this.lives = Math.max(0, this.lives - 1);
       this.jump = null;
       this.audio.stop();
@@ -244,150 +286,241 @@ window.FB = window.FB || {};
 
     resumeLife() {
       this.players[this.player] = this.capture();
+      let next = this.player;
       if (C.twoPlayers(this.gameMode)) {
         const other = 1 - this.player;
-        if (this.players[other] && this.players[other].lives > 0) this.player = other;
+        if (this.players[other] && this.players[other].lives > 0) next = other;
       }
-      const builder = this.players[this.player];
+      const builder = this.players[next];
       if (!builder || builder.lives <= 0) {
         this.phase = 'gameover';
+        this.death = null;
+        this.clearCreatures();
         this.startArmed = false;
         this.audio.stop();
         return;
       }
-      this.score = builder.score;
-      this.lives = builder.lives;
-      this.level = builder.level;
-      this.nextExtraLife = builder.nextExtraLife;
-      this.magicFish = this.score >= T.magicFishScore;
-      this.beginRound();
-      this.phase = 'ready';
+      const switched = next !== this.player;
+      this.player = next;
+      this.restore(builder);
+      this.beginLife();
+      if (switched) {
+        this.phase = 'ready';
+        this.readyTimer = T.readyTime;
+      } else this.phase = 'playing';
     }
 
-    finishLevel() {
-      const shown = this.displayedDegrees();
-      const bonus = C.enterPoints(this.level) + C.degreePoints(this.level, shown);
-      this.lastBonus = bonus;
-      this.banner = `BONUS ${bonus}`;
-      this.scorePoints(bonus);
+    enterIgloo() {
       this.phase = 'clear';
-      this.clearTimer = T.clearTime;
       this.jump = null;
-      this.audio.clear();
+      this.lastBonus = C.enterPoints(this.level) + C.degreePoints(this.level, this.displayedDegrees());
+      this.clear = { stage: 'enter', t: 0 };
+      this.audio.enter();
+    }
+
+    // The tally runs at the cartridge's pace: the igloo comes down block by block, then the degrees.
+    advanceClear(dt) {
+      const c = this.clear;
+      const F = T.clear;
+      const points = 10 * C.tier(this.level);
+      c.t += dt;
+      for (;;) {
+        if (c.stage === 'enter' || c.stage === 'pause' || c.stage === 'gap') {
+          const wait = F[c.stage] * FRAME;
+          if (c.t < wait) return;
+          c.t -= wait;
+          c.stage = c.stage === 'enter' ? 'pause' : c.stage === 'pause' ? 'blocks' : 'degrees';
+        } else if (c.stage === 'blocks') {
+          if (this.blocks <= 0) {
+            c.stage = 'gap';
+            continue;
+          }
+          if (c.t < F.block * FRAME) return;
+          c.t -= F.block * FRAME;
+          this.blocks -= 1;
+          this.scorePoints(points);
+          this.audio.tally(this.blocks);
+        } else if (c.stage === 'degrees') {
+          if (this.degrees <= 0) {
+            c.stage = 'tail';
+            continue;
+          }
+          if (c.t < F.degree * FRAME) return;
+          c.t -= F.degree * FRAME;
+          this.degrees -= 1;
+          this.scorePoints(points);
+          this.audio.degree(this.degrees);
+        } else {
+          if (c.t < F.tail * FRAME) return;
+          this.nextLevel();
+          return;
+        }
+      }
     }
 
     nextLevel() {
       this.level += 1;
-      this.beginRound();
+      this.beginLevel();
       this.phase = 'playing';
       this.players[this.player] = this.capture();
     }
 
-    startJump(direction) {
-      const next = this.lane + direction;
-      if (next < 0 || next > 5) return;
+    // UP heads for the shore (lane - 1), DOWN for the open sea (lane + 1).
+    startJump(step) {
+      const next = this.lane + step;
+      if (next < 0 || next > 4) return false;
+      this.pushedBy = null;
       this.jump = { from: this.lane, to: next, t: 0, duration: T.jumpTime };
-      this.hopLock = T.jumpTime;
       this.audio.jump();
+      return true;
     }
 
-    enemyHit(rowIndex, x) {
-      for (let i = 0; i < this.enemies.length; i++) {
-        const enemy = this.enemies[i];
-        if (enemy.row !== rowIndex) continue;
-        if (Math.abs(W.wrapDelta(x, enemy.x)) < 8) return true;
-      }
-      return false;
-    }
-
-    bearHit() {
-      if (!this.bear || this.lane !== 5 || this.inHideout()) return false;
-      return Math.abs(this.x - this.bear.x) < 10;
-    }
-
-    tryFish() {
-      if (!this.jump) return;
-      const low = Math.min(this.jump.from, this.jump.to);
-      const high = Math.max(this.jump.from, this.jump.to);
-      for (let i = 0; i < this.fish.length; i++) {
-        const fish = this.fish[i];
-        if (!fish.alive || fish.gap < low || fish.gap >= high) continue;
-        if (Math.abs(W.wrapDelta(this.x, fish.x)) < 9) {
-          fish.alive = false;
-          fish.respawn = 3.4;
-          this.scorePoints(T.fishScore);
-          this.audio.fish();
-        }
-      }
-    }
-
+    // Lands score once per white row; blocks stop at 16 but the points keep coming.
     land() {
-      const lane = this.lane;
-      if (lane === 0 || lane === 5) {
-        if (lane === 5 && this.doorOpen() && this.inDoor()) {
-          this.finishLevel();
-          return;
-        }
-        if (this.bearHit()) this.die('urso');
+      const lane = this.jump.to;
+      this.lane = lane;
+      this.jump = null;
+      if (lane === 0) {
+        this.x = clamp(this.x, T.shoreEdge, C.W - 4);
         return;
       }
       const row = this.rowOf(lane);
-      if (!this.supported(row, this.x)) {
+      if (!this.supported(row)) {
         this.die('mar');
-        return;
-      }
-      if (this.enemyHit(lane - 1, this.x)) {
-        this.die('criatura');
         return;
       }
       if (!row.white) return;
       row.white = false;
-      this.addBlock();
-      if (this.phase !== 'playing') return;
-      if (this.rows.every((item) => !item.white)) {
+      this.scorePoints(C.icePoints(this.level));
+      if (this.blocks < T.blocksNeeded) {
+        this.blocks += 1;
+        if (this.blocks === T.blocksNeeded) this.audio.door();
+        else this.audio.block();
+      } else this.audio.block();
+      if (this.blocks < T.blocksNeeded && this.rows.every((item) => !item.white)) {
         for (let i = 0; i < this.rows.length; i++) this.rows[i].white = true;
       }
     }
 
+    // The single floe path: rows drift together and breathing floes open and close.
     drift(dt) {
+      if (dt > 0) this.breath += dt;
       for (let i = 0; i < this.rows.length; i++) {
         const row = this.rows[i];
-        row.offset = W.wrap(row.offset + row.dir * row.speed * dt);
-      }
-      for (let i = 0; i < this.fish.length; i++) {
-        const fish = this.fish[i];
-        fish.x = W.wrap(fish.x + fish.dir * fish.speed * dt);
+        row.shift = row.dir * row.speed * dt;
+        row.offset = W.wrap(row.offset + row.shift);
+        row.gap = W.breathGap(row.shape, this.breath);
       }
     }
 
-    moveHazards(dt) {
+    creaturesIn(row) {
+      return this.enemies.some((item) => item.row === row) || this.fish.some((item) => item.row === row);
+    }
+
+    spawnGroup(row, kind, x, dir, count) {
+      const lane = this.lanes[row];
+      const group = W.spawnGroup(lane, this.level, kind, dir, count);
+      if (x != null) {
+        const lead = group[0].x;
+        for (let i = 0; i < group.length; i++) group[i].x += x - lead;
+      }
+      const bucket = group[0].type === 'fish' ? this.fish : this.enemies;
+      for (let i = 0; i < group.length; i++) bucket.push(group[i]);
+      return group;
+    }
+
+    clearCreatures() {
+      this.enemies.length = 0;
+      this.fish.length = 0;
+      for (let i = 0; i < this.lanes.length; i++) this.lanes[i].wait = Infinity;
+    }
+
+    // Groups cross from edge to edge. Crabs and clams stop and go from level 6.
+    moveCreatures(dt) {
+      const stopGo = this.level >= T.stopGoFrom;
+      for (let i = 0; i < this.lanes.length; i++) {
+        const lane = this.lanes[i];
+        lane.goClock += dt;
+        while (lane.goClock >= T.stopGoTime) {
+          lane.goClock -= T.stopGoTime;
+          lane.go = !lane.go;
+        }
+      }
+      const move = (list) => {
+        for (let i = list.length - 1; i >= 0; i--) {
+          const creature = list[i];
+          const lane = this.lanes[creature.row];
+          creature.moving = !(stopGo && (creature.type === 'crab' || creature.type === 'clam') && lane && !lane.go);
+          if (creature.moving) creature.x += creature.dir * creature.speed * dt;
+          if (W.offscreen(creature)) list.splice(i, 1);
+        }
+      };
+      move(this.enemies);
+      move(this.fish);
+      for (let i = 0; i < this.lanes.length; i++) {
+        const lane = this.lanes[i];
+        if (this.creaturesIn(i)) continue;
+        lane.wait -= dt;
+        if (lane.wait > 0) continue;
+        this.spawnGroup(i);
+        lane.wait = W.nextWait(lane);
+      }
+    }
+
+    // The bear walks toward Bailey, overshooting by the slack before it turns, and backs off to
+    // bearMinX while Bailey is in the hideout.
+    moveBear(dt) {
+      const bear = this.bear;
+      if (!bear) return;
+      if (bear.idle > 0) {
+        bear.idle = Math.max(0, bear.idle - dt);
+        return;
+      }
+      const low = this.inHideout() ? T.bearMinX : T.bearEdge;
+      let next;
+      if (bear.x < low) {
+        next = Math.min(low, bear.x + bear.speed * dt);
+        bear.dir = next < low ? 1 : -1;
+      } else {
+        if (bear.dir < 0 && this.x > bear.x + T.bearSlack) bear.dir = 1;
+        else if (bear.dir > 0 && this.x < bear.x - T.bearSlack) bear.dir = -1;
+        next = clamp(bear.x + bear.dir * bear.speed * dt, low, T.bearMaxX);
+      }
+      if (next !== bear.x) bear.walk += dt;
+      bear.x = next;
+    }
+
+    bearHit() {
+      if (!this.bear || this.lane !== 0 || this.jump || this.inHideout()) return false;
+      return Math.abs(this.x - this.bear.x) < T.bearReach;
+    }
+
+    // Creatures never wrap, and one still off-screen cannot reach Bailey.
+    visible(creature) {
+      return creature.x >= 0 && creature.x < C.W;
+    }
+
+    // A moving creature carries Bailey along at its own speed, a few pixels ahead of it.
+    pushByCreatures(row) {
+      let pushed = null;
       for (let i = 0; i < this.enemies.length; i++) {
-        const enemy = this.enemies[i];
-        enemy.timer += dt;
-        enemy.paused = enemy.type !== 'goose' && (enemy.timer % 1.8) > 1.45;
-        if (!enemy.paused) enemy.x = W.wrap(enemy.x + enemy.dir * enemy.speed * dt);
+        const creature = this.enemies[i];
+        if (creature.row !== row || !creature.moving || !this.visible(creature)) continue;
+        const ahead = (this.x - creature.x) * creature.dir;
+        if (ahead < 0 || ahead >= T.creatureReach) continue;
+        if (ahead < T.pushGap) this.x = bound(this.x, creature.x + creature.dir * T.pushGap, T.iceMin, T.iceMax);
+        pushed = creature.type;
       }
-      for (let i = 0; i < this.fish.length; i++) {
+      this.pushedBy = pushed;
+    }
+
+    collectFish(row) {
+      for (let i = this.fish.length - 1; i >= 0; i--) {
         const fish = this.fish[i];
-        if (!fish.alive) {
-          fish.respawn -= dt;
-          if (fish.respawn <= 0) {
-            fish.alive = true;
-            fish.x = W.wrap(fish.x + 83);
-          }
-          continue;
-        }
-        fish.x = W.wrap(fish.x + fish.dir * fish.speed * dt);
-      }
-      if (this.bear) {
-        this.bear.x += this.bear.dir * this.bear.speed * dt;
-        if (this.bear.x <= T.bearMinX) {
-          this.bear.x = T.bearMinX;
-          this.bear.dir = 1;
-        } else if (this.bear.x >= T.bearMaxX) {
-          this.bear.x = T.bearMaxX;
-          this.bear.dir = -1;
-        }
+        if (fish.row !== row || !this.visible(fish) || Math.abs(this.x - fish.x) >= T.creatureReach) continue;
+        this.fish.splice(i, 1);
+        this.scorePoints(T.fishScore);
+        this.audio.fish();
       }
     }
 
@@ -408,84 +541,106 @@ window.FB = window.FB || {};
         if (input.fire && this.startArmed) {
           this.start();
           this.fireLatch = true;
-        } else return;
+        }
       }
       if (this.phase === 'ready') {
-        if (!controls.some((key) => input[key])) return;
-        this.phase = 'playing';
-        if (input.fire) this.fireLatch = true;
+        this.readyTimer -= dt;
+        // The press that started the game is still latched, so only a fresh command leaves the wait.
+        const fresh = controls.some((key) => input[key] && (key !== 'fire' || !this.fireLatch));
+        if (fresh || this.readyTimer <= 0) {
+          this.phase = 'playing';
+          if (input.fire) this.fireLatch = true;
+        }
       }
-      if (this.phase === 'dying') {
-        this.deathTimer -= dt;
-        if (this.deathTimer <= 0) this.resumeLife();
-        return;
-      }
-      if (this.phase === 'clear') {
-        this.clearTimer -= dt;
-        if (this.clearTimer <= 0) this.nextLevel();
-        return;
-      }
-      if (this.phase !== 'playing') return;
+      if (this.phase === 'dying') this.advanceDying(dt);
+      else if (this.phase === 'clear') this.advanceClear(dt);
+      else if (this.phase === 'playing') this.advancePlaying(dt, input);
+      this.fireLatch = !!input.fire;
+    }
 
-      this.degrees -= C.degreeRate(this.level) * dt;
+    advanceDying(dt) {
+      const death = this.death;
+      if (death) {
+        death.t += dt;
+        // The bear drags Bailey off the left edge of the screen.
+        if (death.reason === 'urso' && this.bear && this.x > 4) {
+          this.bear.dir = -1;
+          this.bear.walk += dt;
+          this.bear.x -= Math.max(this.bear.speed, T.walkSpeed) * dt;
+          this.x = Math.max(4, this.bear.x + death.grip);
+        }
+      }
+      this.deathTimer -= dt;
+      if (this.deathTimer <= 0) this.resumeLife();
+    }
+
+    advancePlaying(dt, input) {
+      this.chill += dt;
+      while (this.chill >= T.degreeTime) {
+        this.chill -= T.degreeTime;
+        this.degrees -= 1;
+      }
       if (this.degrees <= 0) {
         this.degrees = 0;
         this.die('frio');
         return;
       }
 
-      for (let i = 0; i < this.rows.length; i++) {
-        const row = this.rows[i];
-        row.offset = W.wrap(row.offset + row.dir * row.speed * dt);
+      // While the floes hold at the start of a level or life the cartridge ignores the joystick.
+      const still = this.hold > 0;
+      this.hold = Math.max(0, this.hold - dt);
+      this.drift(still ? 0 : dt);
+      if (!still) this.moveCreatures(dt);
+      this.moveBear(dt);
+      if (still) {
+        if (this.bearHit()) this.die('urso');
+        return;
       }
-      this.moveHazards(dt);
 
       const direction = Number(!!input.right) - Number(!!input.left);
       if (direction) this.facing = direction;
 
       if (this.jump) {
-        const air = T.airSpeed + (this.level - 1) * T.airPerLevel;
-        this.x = W.wrap(this.x + direction * air * dt);
-        this.tryFish();
+        const target = this.x + direction * C.airSpeed(this.level) * dt;
+        this.x = this.jump.to === 0 ? clamp(target, T.shoreEdge, C.W - 4) : bound(this.x, target, T.iceMin, T.iceMax);
         this.jump.t += dt;
-        if (this.jump.t >= this.jump.duration) {
-          this.lane = this.jump.to;
-          this.jump = null;
-          this.hopLock = (input.up || input.down) ? 1 : 0;
-          this.land();
-        }
-      } else {
-        if (this.lane === 0 || this.lane === 5) {
-          this.x = clamp(this.x + direction * T.walkSpeed * dt, 4, C.W - 4);
-          if (this.phase === 'playing' && this.lane === 5 && this.doorOpen() && this.inDoor()) {
-            this.finishLevel();
-          } else if (this.phase === 'playing' && this.bearHit()) {
-            this.die('urso');
-          }
-        } else {
-          const row = this.rowOf(this.lane);
-          this.x = W.wrap(this.x + row.dir * row.speed * dt + direction * T.walkSpeed * dt);
-          if (!this.supported(row, this.x)) this.die('mar');
-          else if (this.enemyHit(this.lane - 1, this.x)) this.die('criatura');
-        }
-
-        if (this.phase === 'playing') {
-          if (!input.up && !input.down) this.hopLock = 0;
-          if (this.hopLock <= 0) {
-            if (input.up) this.startJump(1);
-            else if (input.down) this.startJump(-1);
-          }
-          if (input.fire && !this.fireLatch) this.reverse();
-        }
+        if (this.jump.t >= this.jump.duration) this.land();
+        return;
       }
 
-      this.fireLatch = !!input.fire;
-      this.audio.chill(this.phase === 'playing' && this.displayedDegrees() <= 10);
+      if (direction) this.walkClock += dt;
+      if (this.lane === 0) {
+        this.x = bound(this.x, this.x + direction * T.walkSpeed * dt, T.shoreMin, T.shoreMax);
+        if (this.bearHit()) {
+          this.die('urso');
+          return;
+        }
+        if (input.up && this.doorOpen() && this.inDoor()) {
+          this.enterIgloo();
+          return;
+        }
+        if (input.down) this.startJump(1);
+        return;
+      }
+
+      // Ice rows wrap but Bailey does not: at an edge he stays put while the floe slides on.
+      const row = this.rowOf(this.lane);
+      this.x = bound(this.x, this.x + row.shift + direction * T.walkSpeed * dt, T.iceMin, T.iceMax);
+      this.pushByCreatures(row.index);
+      this.collectFish(row.index);
+      if (!this.supported(row)) {
+        this.die('mar');
+        return;
+      }
+      if (input.fire && !this.fireLatch) this.reverse();
+      if (input.up) this.startJump(-1);
+      else if (input.down) this.startJump(1);
     }
   }
 
   FB.Game = Game;
   FB.modeLabel = modeLabel;
+  FB.cardLines = cardLines;
 
   FB.boot = function () {
     const canvas = document.getElementById('screen');
@@ -500,6 +655,7 @@ window.FB = window.FB || {};
     let monochrome = false;
     let last = null;
     let statusText = '';
+    let architectShown = null;
     let record = 0;
     try { record = Number(localStorage.getItem('frostbite2600.highScore')) || 0; } catch (_) { /* Storage is optional. */ }
     game.highScore = record;
@@ -528,9 +684,7 @@ window.FB = window.FB || {};
         const button = document.querySelector('[data-switch="tv"]');
         if (button) button.setAttribute('aria-pressed', String(monochrome));
       } else if (type === 'fullscreen') {
-        const tv = document.querySelector('.tv');
-        if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-        else tv.requestFullscreen?.().catch(() => {});
+        toggleFullscreen();
       } else {
         game.action(type);
         label('diff-state', game.expertLever ? 'Alavanca A · sem efeito no cartucho' : 'Alavanca B · sem efeito no cartucho');
@@ -540,11 +694,41 @@ window.FB = window.FB || {};
       }
       syncStatus();
     }
+    // The stage holds the television and the touch pad, so a phone keeps its controls. Older Safari
+    // only has the webkit-prefixed API, and the iPhone has neither, so the button hides there.
+    const stage = document.querySelector('.stage');
+    const requestFull = stage && (stage.requestFullscreen || stage.webkitRequestFullscreen);
+    const canFullscreen = !!requestFull && !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+    const fullscreenButton = document.getElementById('fullscreen-button');
+    if (fullscreenButton && !canFullscreen) fullscreenButton.hidden = true;
+
+    function fullscreenElement() {
+      return document.fullscreenElement || document.webkitFullscreenElement || null;
+    }
+
+    function settle(result) {
+      if (result && typeof result.catch === 'function') result.catch(() => {});
+    }
+
+    function toggleFullscreen() {
+      if (!canFullscreen) return;
+      try {
+        if (fullscreenElement()) settle((document.exitFullscreen || document.webkitExitFullscreen).call(document));
+        else settle(requestFull.call(stage));
+      } catch (_) { /* The browser can refuse fullscreen. */ }
+    }
+
+    function markFullscreen() {
+      if (stage) stage.classList.toggle('full', fullscreenElement() === stage);
+    }
+    document.addEventListener('fullscreenchange', markFullscreen);
+    document.addEventListener('webkitfullscreenchange', markFullscreen);
+
     FB.Input.init(action);
 
     function pauseOnLeave() {
       FB.Input.clear();
-      if (game.phase === 'playing' || game.phase === 'dying' || game.phase === 'clear') game.togglePause();
+      if (game.phase === 'playing' || game.phase === 'ready' || game.phase === 'dying' || game.phase === 'clear') game.togglePause();
       FB.Audio.stop();
       last = null;
       syncStatus();
@@ -552,17 +736,31 @@ window.FB = window.FB || {};
     window.addEventListener('blur', pauseOnLeave);
     document.addEventListener('visibilitychange', () => { if (document.hidden) pauseOnLeave(); });
 
+    function deathMessage() {
+      if (game.reason === 'frio') return 'A temperatura chegou a zero e Frostbite Bailey congelou.';
+      if (game.reason === 'urso') return 'O urso polar arrastou Frostbite Bailey para fora da tela.';
+      const pushedBy = game.death && game.death.pushedBy;
+      if (pushedBy) {
+        const names = { goose: 'Um ganso', crab: 'Um caranguejo', clam: 'Um marisco' };
+        return `${names[pushedBy] || 'Uma criatura'} empurrou Frostbite Bailey para o mar Ártico.`;
+      }
+      return 'Frostbite Bailey caiu no mar Ártico.';
+    }
+
+    function touchScreen() {
+      return document.body.classList.contains('touch');
+    }
+
     function syncStatus() {
-      const cold = game.phase === 'dying' && game.reason === 'frio';
-      const bear = game.phase === 'dying' && game.reason === 'urso';
+      const touch = touchScreen();
       const messages = {
-        title: 'Aperte Enter ou o botão vermelho para começar a construir.',
-        ready: `Jogador ${game.player + 1}. Mova o joystick para saltar no gelo.`,
-        playing: `Jogador ${game.player + 1} no gelo. A temperatura está caindo.`,
-        paused: 'Jogo pausado. Aperte P ou CONTINUAR para voltar ao gelo.',
-        clear: 'Iglu pronto. O bônus de temperatura entrou no placar.',
-        dying: cold ? 'A temperatura chegou a zero.' : bear ? 'O urso expulsou Frostbite Bailey.' : 'Frostbite Bailey caiu no mar Ártico.',
-        gameover: `Fim de jogo. Recorde: ${game.highScore}. Aperte Enter para tentar de novo.`,
+        title: touch ? 'Toque na tela ou no botão vermelho para começar a construir.' : 'Aperte Enter ou o botão vermelho para começar a construir.',
+        ready: `Jogador ${game.player + 1}. Mova o joystick para começar; o gelo parte logo depois.`,
+        playing: game.doorOpen() ? `Jogador ${game.player + 1}: o iglu está pronto. Pare diante da porta e empurre para cima.` : `Jogador ${game.player + 1} no gelo. A temperatura está caindo.`,
+        paused: touch ? 'Jogo pausado. Toque na tela, no botão vermelho ou em CONTINUAR para voltar ao gelo.' : 'Jogo pausado. Aperte P ou CONTINUAR para voltar ao gelo.',
+        clear: `Bailey entrou no iglu. Bônus de ${game.lastBonus} pontos.`,
+        dying: deathMessage(),
+        gameover: `Fim de jogo. Recorde: ${game.highScore}. ${touch ? 'Toque na tela ou no botão vermelho' : 'Aperte Enter ou o botão vermelho'} para tentar de novo.`,
       };
       if (statusText !== messages[game.phase]) {
         statusText = messages[game.phase];
@@ -575,188 +773,255 @@ window.FB = window.FB || {};
         pause.disabled = game.phase === 'title' || game.phase === 'gameover';
         pause.setAttribute('aria-pressed', String(game.phase === 'paused'));
       }
+      // During play Enter pauses, so the restart button shows R, the key that restarts.
       const startLabel = document.getElementById('start-label');
       const starting = game.phase === 'title' || game.phase === 'gameover';
-      if (startLabel) startLabel.textContent = starting ? 'COMEÇAR' : game.phase === 'ready' ? 'SALTAR' : 'REINICIAR';
+      const resetting = !starting && game.phase !== 'ready';
+      if (startLabel) startLabel.textContent = starting ? 'COMEÇAR' : resetting ? 'REINICIAR' : 'JOGAR';
+      const startKey = document.getElementById('start-key');
+      if (startKey && startKey.textContent !== (resetting ? 'R' : 'ENTER')) startKey.textContent = resetting ? 'R' : 'ENTER';
       const start = document.getElementById('start-button');
-      if (start) start.setAttribute('data-action', starting || game.phase === 'ready' ? 'start' : 'reset');
+      if (start) start.setAttribute('data-action', resetting ? 'reset' : 'start');
+      const architect = game.architect;
+      if (architect !== architectShown) {
+        architectShown = architect;
+        const note = document.getElementById('architect-state');
+        if (note) note.hidden = !architect;
+      }
     }
 
-    function outlined(rows, x, y, colors, flip) {
-      sprite(rows, x + 1, y + 1, { 1: '#10141c', 2: '#10141c', 3: '#10141c' }, flip);
-      sprite(rows, x, y, colors, flip);
+    function fill(color, x, y, w, h) {
+      g.fillStyle = color;
+      g.fillRect(x, y, w, h);
     }
 
-    function sprite(rows, x, y, colors, flip) {
+    // Draws a bitmap from its top-left corner; rows below `clip` stay hidden under the water.
+    function sprite(rows, left, top, colors, clip) {
       if (!rows) return;
-      const left = Math.round(x - rows[0].length / 2);
-      const top = Math.round(y - rows.length / 2);
       for (let row = 0; row < rows.length; row++) {
-        for (let col = 0; col < rows[row].length; col++) {
-          const pixel = rows[row][flip ? rows[row].length - 1 - col : col];
-          if (pixel === '.' || pixel === ' ' || pixel === '0') continue;
-          g.fillStyle = colors[pixel] || colors[1] || '#ffffff';
-          g.fillRect(left + col, top + row, 1, 1);
+        const y = top + row;
+        if (clip != null && y > clip) break;
+        const line = rows[row];
+        for (let col = 0; col < line.length; col++) {
+          const pixel = line[col];
+          if (pixel === '.') continue;
+          g.fillStyle = colors[pixel] || colors.default;
+          g.fillRect(left + col, y, 1, 1);
         }
       }
     }
 
-    function text(value, x, y, color, scale, centered) {
+    // Entities on the ice wrap at 160 px, so a second copy covers the seam.
+    function wrapped(draw, left, width) {
+      draw(left);
+      if (left < 0) draw(left + C.W);
+      if (left + width > C.W) draw(left - C.W);
+    }
+
+    function text(value, x, y, color, centered) {
       const font = FB.Font;
       value = String(value).toUpperCase();
-      const size = scale || 1;
-      const width = value.length * 6 * size - size;
-      if (centered) x -= width / 2;
+      const width = value.length * 6 - 1;
+      if (centered) x = Math.round(x - width / 2);
       g.fillStyle = color;
       for (let i = 0; i < value.length; i++) {
-        const rows = font[value[i]] || font[' '];
+        const glyph = font[value[i]] || font[' '];
+        const rows = glyph.rows || glyph;
+        const top = y + (glyph.top || 0);
         for (let row = 0; row < rows.length; row++) {
           for (let col = 0; col < rows[row].length; col++) {
-            if (rows[row][col] === '1') g.fillRect(Math.round(x + col * size), y + row * size, size, size);
+            if (rows[row][col] === '1') g.fillRect(x + col, top + row, 1, 1);
           }
         }
-        x += 6 * size;
+        x += 6;
       }
     }
 
-    function palette() {
-      return C.palette(game.level);
+    function digit(value, x, y, color) {
+      sprite(S.digits[value], x, y, { default: color });
+    }
+
+    function shimmer(line, tick) {
+      let h = Math.imul(line + 1, 374761393) ^ Math.imul(tick + 7, 668265263);
+      h = Math.imul(h ^ (h >>> 13), 1274126177);
+      return (h >>> 16) & 1;
+    }
+
+    function drawScenery(colors) {
+      fill('#000000', 0, 0, C.W, C.H);
+      fill(colors.sky, 0, 0, C.W, L.hud);
+      const tick = Math.floor(game.time * 60 / 8);
+      for (let i = 0; i < colors.horizon.length; i++) {
+        fill(colors.horizon[i][shimmer(i, tick)], 0, L.horizon + i, C.W, 1);
+      }
+      fill(colors.shore, 0, L.shoreTop, C.W, L.shoreBottom - L.shoreTop);
+      fill(colors.water, 0, L.waterTop, C.W, L.waterBottom - L.waterTop);
     }
 
     function drawIgloo(colors) {
-      const cell = T.iglooCell;
-      for (let n = 0; n < T.blocksNeeded; n++) {
-        const col = n % 4;
-        const row = Math.floor(n / 4);
-        const x = T.iglooX + col * cell;
-        const y = T.iglooY + (3 - row) * cell;
-        const built = n < game.blocks;
-        const door = game.doorOpen() && row === 0 && (col === 1 || col === 2);
-        if (door) {
-          g.fillStyle = colors.door;
-          g.fillRect(x, y, cell - 1, cell - 1);
-        } else if (built) {
-          g.fillStyle = colors.igloo;
-          g.fillRect(x, y, cell - 1, cell - 1);
-          g.fillStyle = colors.iglooEdge;
-          g.fillRect(x, y + cell - 1, cell - 1, 1);
-        } else {
-          g.fillStyle = colors.iglooEdge;
-          g.fillRect(x, y, cell - 1, 1);
-          g.fillRect(x, y + cell - 2, cell - 1, 1);
-          g.fillRect(x, y, 1, cell - 1);
-          g.fillRect(x + cell - 2, y, 1, cell - 1);
+      const count = Math.min(game.blocks, T.blocksNeeded - 1);
+      for (let i = 0; i < count; i++) {
+        const block = S.iglooBlocks[i];
+        fill(colors.igloo, L.iglooX + block[0], L.iglooY + block[1], block[2], block[3]);
+      }
+      if (game.blocks >= T.blocksNeeded) {
+        for (let i = 0; i < S.iglooDoor.length; i++) {
+          const door = S.iglooDoor[i];
+          fill(colors.door, L.iglooX + door[0], L.iglooY + door[1], door[2], door[3]);
         }
+      }
+    }
+
+    function drawFloes(colors) {
+      for (let i = 0; i < game.rows.length; i++) {
+        const row = game.rows[i];
+        const lane = C.LANES[i + 1];
+        const color = row.white ? colors.ice : colors.iceUsed;
+        const list = W.pieces(row);
+        for (let p = 0; p < list.length; p++) {
+          const piece = list[p];
+          for (let k = 0; k < W.SLANT.length; k++) {
+            const left = Math.round(piece.x + W.SLANT[k]);
+            wrapped((x) => fill(color, x, lane.top + k, piece.w, 1), left, piece.w);
+          }
+        }
+      }
+    }
+
+    function drawCreature(creature, colors) {
+      const lane = C.LANES[creature.row + 1];
+      const left = Math.round(creature.x - 4);
+      const beat = Math.floor((game.time + creature.phase) * 60 / 8);
+      if (creature.type === 'goose') {
+        const frames = creature.dir < 0 ? S.gooseLeft : S.gooseFrames;
+        sprite(frames[beat % 2], left, lane.water - 7, { default: colors.goose });
+        return;
+      }
+      let rows;
+      let color;
+      if (creature.type === 'crab') {
+        rows = S.crabFrames[beat % 2];
+        color = colors.crab;
+      } else if (creature.type === 'clam') {
+        rows = (creature.dir > 0 ? S.clamRight : S.clamFrames)[Math.floor(beat / 2) % 2];
+        color = colors.clam;
+      } else {
+        rows = (creature.dir > 0 ? S.fishRight : S.fishFrames)[beat % 2];
+        color = colors.fish;
+      }
+      // Sea creatures bob, sinking a few lines below the waterline and rising again.
+      const bob = Math.round(2 - 2 * Math.cos((game.time * 60 / 64 + creature.phase) * Math.PI * 2));
+      sprite(rows, left, lane.water - rows.length + 1 + bob, { default: color }, lane.water);
+    }
+
+    function drawBear(colors) {
+      const bear = game.bear;
+      if (!bear) return;
+      const frames = bear.dir < 0 ? S.bearFrames : S.bearRight;
+      const rows = frames[Math.floor(bear.walk * 60 / 8) % 2];
+      sprite(rows, Math.round(bear.x - 7), C.LANES[0].feet - rows.length + 1, { default: colors.bear });
+    }
+
+    function baileyInks(colors) {
+      return { h: colors.hat, f: colors.face, c: game.player === 1 ? colors.player2 : colors.coat, d: colors.boots };
+    }
+
+    // A paused game draws the scene it paused in.
+    function shownPhase() {
+      return game.phase === 'paused' ? game.previousPhase : game.phase;
+    }
+
+    function baileyRows() {
+      const left = game.facing < 0;
+      if (game.jump && game.jump.t < 14 * FRAME) return left ? S.baileyJumpLeft : S.baileyJump;
+      const stepping = !game.jump && shownPhase() === 'playing' && Math.floor(game.walkClock / T.walkFrame) % 2 === 1;
+      if (stepping) return left ? S.baileyWalkLeft : S.baileyWalk;
+      return left ? S.baileyLeft : S.bailey;
+    }
+
+    function drawBailey(colors) {
+      if (game.phase === 'gameover') return;
+      const inks = baileyInks(colors);
+      const icy = game.lane > 0 || (game.jump && game.jump.to > 0);
+      const phase = shownPhase();
+      if (phase === 'clear') {
+        const c = game.clear;
+        if (!c || c.stage !== 'enter') return;
+        const rise = Math.round(c.t / (T.clear.enter * FRAME) * 27);
+        const rows = S.bailey;
+        sprite(rows, Math.round(game.x - 4), C.LANES[0].feet - rows.length + 1 - rise, inks);
+        return;
+      }
+      if (phase === 'dying' && game.death) {
+        const death = game.death;
+        const rows = game.facing < 0 ? S.baileyLeft : S.bailey;
+        const feet = Math.round(death.feet);
+        const left = Math.round(game.x - 4);
+        if (death.reason === 'mar') {
+          const sink = Math.floor(death.t * 60 / 3);
+          if (sink >= rows.length) return;
+          wrapped((x) => sprite(rows, x, feet - rows.length + 1 + sink, inks, feet), left, 8);
+        } else if (death.reason === 'frio') {
+          const frozen = Math.min(rows.length, Math.floor(death.t * 60 / 85 * rows.length));
+          const iced = rows.map((line, index) => {
+            const fromBottom = rows.length - 1 - index;
+            if (fromBottom >= frozen) return line;
+            const band = Math.min(3, Math.floor(fromBottom / (rows.length / 4)));
+            return line.replace(/[^.]/g, String(band));
+          });
+          const inksFrozen = Object.assign({}, inks, { 0: colors.frozen[0], 1: colors.frozen[1], 2: colors.frozen[2], 3: colors.frozen[3] });
+          wrapped((x) => sprite(iced, x, feet - rows.length + 1, inksFrozen), left, 8);
+        } else {
+          sprite(S.baileyJumpLeft, left, feet - S.baileyJumpLeft.length + 1, inks);
+        }
+        return;
+      }
+      const rows = baileyRows();
+      const left = Math.round(game.x - 4);
+      const top = Math.round(game.footY()) - rows.length + 1;
+      if (icy) wrapped((x) => sprite(rows, x, top, inks), left, 8);
+      else sprite(rows, left, top, inks);
+    }
+
+    function drawHud(colors) {
+      const score = String(game.score);
+      for (let i = 0; i < score.length; i++) {
+        digit(score[i], L.scoreX + 8 * (6 - score.length + i), L.scoreY, colors.ink);
+      }
+      const degrees = game.displayedDegrees();
+      if (degrees >= 10) digit(String(Math.floor(degrees / 10) % 10), L.scoreX, L.lineY, colors.ink);
+      digit(String(degrees % 10), L.scoreX + 8, L.lineY, colors.ink);
+      sprite(S.degree, L.scoreX + 15, L.lineY, { default: colors.ink });
+      if (game.magicFish) sprite(S.magic, L.scoreX + 23, L.lineY, { default: colors.ink });
+      if (game.reserves > 0) digit(String(game.reserves), L.scoreX + 40, L.lineY, colors.ink);
+    }
+
+    function drawCard(colors) {
+      const lines = cardLines(game, touchScreen());
+      if (!lines) return;
+      const height = lines.length * 12 + 8;
+      const top = 124 - Math.round(height / 2);
+      fill(colors.card, 18, top, 124, height);
+      for (let i = 0; i < lines.length; i++) {
+        text(lines[i], 80, top + 6 + i * 12, i === 0 ? colors.text : i === 2 ? colors.textDim : '#D6D6D6', true);
       }
     }
 
     function render() {
-      const colors = palette();
-      g.fillStyle = colors.water;
-      g.fillRect(0, 0, C.W, C.H);
-
-      const top = C.LANES[5];
-      const bottom = C.LANES[0];
-      g.fillStyle = colors.snow;
-      g.fillRect(0, top.top, C.W, top.height);
-      g.fillRect(0, bottom.top, C.W, bottom.height);
-      g.fillStyle = colors.snowShadow;
-      g.fillRect(0, top.top + top.height - 2, C.W, 2);
-      g.fillRect(0, bottom.top, C.W, 2);
-      g.fillStyle = colors.alcove;
-      g.fillRect(0, top.top + 12, 30, top.height - 12);
-
-      for (let i = 0; i < game.rows.length; i++) {
-        const row = game.rows[i];
-        const lane = C.LANES[i + 1];
-        const pieces = W.segments(row.pattern, row.offset);
-        g.fillStyle = row.white ? colors.ice : colors.iceUsed;
-        for (let p = 0; p < pieces.length; p++) g.fillRect(pieces[p].x, lane.top, pieces[p].w, lane.height - 2);
-        g.fillStyle = row.white ? colors.iceEdge : colors.iceUsedEdge;
-        for (let p = 0; p < pieces.length; p++) g.fillRect(pieces[p].x, lane.top + lane.height - 2, pieces[p].w, 2);
-      }
-
-      for (let i = 0; i < game.fish.length; i++) {
-        const fish = game.fish[i];
-        if (!fish.alive) continue;
-        const lower = C.LANES[fish.gap];
-        const upper = C.LANES[fish.gap + 1];
-        const y = (lower.top + upper.top + upper.height) / 2;
-        sprite(FB.Sprites.fish, fish.x, y, { 1: colors.fish, 2: colors.fishBelly }, fish.dir < 0);
-      }
-
-      for (let i = 0; i < game.enemies.length; i++) {
-        const enemy = game.enemies[i];
-        const lane = C.LANES[enemy.row + 1];
-        const bob = enemy.paused ? -2 : 0;
-        const y = lane.top - 2 + bob;
-        if (enemy.type === 'goose') {
-          const frame = FB.Sprites.gooseFrames[Math.floor(game.time * 8) % 2];
-          outlined(frame, enemy.x, y, { 1: colors.goose, 3: colors.beak }, enemy.dir < 0);
-        } else if (enemy.type === 'crab') {
-          sprite(FB.Sprites.crab, enemy.x, y, { 1: colors.crab, 3: colors.crabDark });
-        } else {
-          const frame = enemy.paused ? FB.Sprites.clamOpen : FB.Sprites.clam;
-          sprite(frame, enemy.x, y, { 1: colors.clamDark, 2: colors.clam });
-        }
-      }
-
+      const colors = C.palette(game.level);
+      drawScenery(colors);
       drawIgloo(colors);
-
-      if (game.bear && game.phase !== 'gameover') {
-        const rows = game.bear.dir < 0 ? FB.Sprites.bearLeft : FB.Sprites.bear;
-        outlined(rows, game.bear.x, game.surface(5) - rows.length / 2, {
-          1: colors.bear, 2: colors.bearDark,
-        });
-      }
-
-      if (game.phase === 'dying') {
-        sprite(FB.Sprites.splash, game.x, game.footY() - 4, { 1: colors.splash, 2: colors.text });
-      } else if (game.phase !== 'gameover') {
-        const jumping = !!game.jump;
-        const left = game.facing < 0;
-        const rows = jumping ? (left ? FB.Sprites.baileyJumpLeft : FB.Sprites.baileyJump) : (left ? FB.Sprites.baileyLeft : FB.Sprites.bailey);
-        const suit = game.player === 1 ? colors.player2 : colors.bailey;
-        outlined(rows, game.x, game.footY() - rows.length / 2, { 1: suit, 2: colors.skin, 3: colors.boot });
-      }
-
-      g.fillStyle = colors.hud;
-      g.fillRect(0, 0, C.W, C.HUD);
-      g.fillStyle = colors.hudLine;
-      g.fillRect(0, C.HUD - 1, C.W, 1);
-      text(String(game.score), 2, 4, colors.score);
-      if (game.magicFish) sprite(FB.Sprites.magic, 46, 8, { 1: colors.fish, 2: colors.fishBelly });
-      text(`F${game.level}`, 54, 4, colors.textDim);
-      const cold = game.displayedDegrees() <= 10 && Math.floor(game.time * 4) % 2 === 0;
-      text(`${game.displayedDegrees()}`, 86, 4, cold ? colors.tempLow : colors.temp);
-      text('°', 86 + String(game.displayedDegrees()).length * 6, 4, cold ? colors.tempLow : colors.temp);
-      const reserves = Math.max(0, game.lives - 1);
-      sprite(FB.Sprites.bailey, 128, 8, { 1: game.player === 1 ? colors.player2 : colors.bailey, 2: colors.skin, 3: colors.boot });
-      text(String(reserves), 136, 4, colors.text);
-      if (game.badge) {
-        g.fillStyle = colors.temp;
-        g.fillRect(150, 4, 6, 6);
-      }
-
-      if (game.phase === 'title' || game.phase === 'gameover' || game.phase === 'paused' || game.phase === 'ready' || game.phase === 'clear') {
-        const title = game.phase === 'title' ? 'FROSTBITE' :
-          game.phase === 'gameover' ? 'FIM DE JOGO' :
-          game.phase === 'paused' ? 'PAUSA' :
-          game.phase === 'clear' ? 'IGLU' :
-          `JOGADOR ${game.player + 1}`;
-        g.fillStyle = 'rgba(8,10,20,0.84)';
-        g.fillRect(10, 70, 140, game.phase === 'title' ? 58 : 40);
-        text(title, 80, 78, colors.text, 1, true);
-        if (game.phase === 'title') text('CARTWRIGHT 1983', 80, 90, '#ffffff', 1, true);
-        const prompt = game.phase === 'paused' ? 'P PARA CONTINUAR' :
-          game.phase === 'clear' ? game.banner :
-          game.phase === 'ready' ? 'MOVA PARA SALTAR' :
-          'ENTER OU BOTAO';
-        text(prompt, 80, game.phase === 'title' ? 104 : 96, '#ffffff', 1, true);
-        if (game.phase === 'title' || game.phase === 'gameover') {
-          text(`RECORDE ${game.highScore}`, 80, game.phase === 'title' ? 116 : 108, colors.textDim, 1, true);
-        }
-      }
+      fill('#000000', 0, L.shoreBottom, C.W, 1);
+      drawFloes(colors);
+      for (let i = 0; i < game.fish.length; i++) drawCreature(game.fish[i], colors);
+      for (let i = 0; i < game.enemies.length; i++) drawCreature(game.enemies[i], colors);
+      if (game.phase !== 'gameover') drawBear(colors);
+      drawBailey(colors);
+      drawHud(colors);
+      // Activision cartridges blank the first 8 columns of every line (the HMOVE comb).
+      fill('#000000', 0, 0, T.hmove, L.waterBottom);
+      sprite(S.signature, 20, L.signatureTop, colors.signature);
+      drawCard(colors);
 
       const rect = canvas.getBoundingClientRect();
       const ratio = Math.min(window.devicePixelRatio || 1, 3);
@@ -774,14 +1039,15 @@ window.FB = window.FB || {};
       }
     }
 
+    // The next frame is booked first, so one exception cannot stop the game for good.
     function tick(timestamp) {
+      requestAnimationFrame(tick);
       const input = FB.Input.poll();
       if (controls.some((key) => input[key])) FB.Audio.unlock();
       if (last !== null) game.step(Math.min((timestamp - last) / 1000, 0.06), input);
       last = timestamp;
       syncStatus();
       render();
-      requestAnimationFrame(tick);
     }
 
     label('game-state', modeLabel(game.gameMode));

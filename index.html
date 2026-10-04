@@ -17,40 +17,42 @@
   </header>
 
   <main class="game-room">
-    <section class="tv" aria-label="Frostbite no televisor">
-      <div class="crt">
-        <canvas id="screen" width="160" height="192" tabindex="0" aria-label="Tela de Frostbite. Setas movem Bailey, espaço inverte o gelo e Enter inicia."></canvas>
-      </div>
-      <div class="deck">
-        <div class="console-brand"><span class="brand">VIDEO COMPUTER SYSTEM</span><span class="model">2600</span></div>
-        <div class="switches" aria-label="Chaves do console">
-          <button id="color-switch" class="switch" data-action="color" data-switch="tv" aria-pressed="false" aria-label="Alternar TV colorida e preto e branco" title="Cor / preto e branco (C)"><span class="lever" aria-hidden="true"></span><span class="label">COR · P&amp;B</span></button>
-          <button id="difficulty-switch" class="switch" data-action="difficulty" data-switch="difficulty" aria-pressed="false" aria-label="Alavanca de dificuldade, sem efeito neste cartucho" title="Dificuldade B / A (L). Sem efeito neste cartucho."><span class="lever" aria-hidden="true"></span><span class="label">B · A</span></button>
-          <button id="select-button" class="switch momentary" data-action="select" data-switch="select" aria-label="Selecionar o jogo" title="Selecionar jogo (1 a 4)"><span class="lever" aria-hidden="true"></span><span class="label">GAME SELECT</span></button>
-          <button id="reset-button" class="switch momentary" data-action="reset" data-switch="reset" aria-label="Reiniciar partida" title="Reiniciar partida (R)"><span class="lever" aria-hidden="true"></span><span class="label">GAME RESET</span></button>
+    <div class="stage">
+      <section class="tv" aria-label="Frostbite no televisor">
+        <div class="crt">
+          <canvas id="screen" width="160" height="192" tabindex="0" aria-label="Tela de Frostbite. Setas movem Bailey, espaço inverte o gelo e Enter inicia."></canvas>
         </div>
-        <span class="led" aria-label="Console ligado"></span>
+        <div class="deck">
+          <div class="console-brand"><span class="brand">VIDEO COMPUTER SYSTEM</span><span class="model">2600</span></div>
+          <div class="switches" aria-label="Chaves do console">
+            <button id="color-switch" class="switch" data-action="color" data-switch="tv" aria-pressed="false" aria-label="Alternar TV colorida e preto e branco" title="Cor / preto e branco (C)"><span class="lever" aria-hidden="true"></span><span class="label">COR · P&amp;B</span></button>
+            <button id="difficulty-switch" class="switch" data-action="difficulty" data-switch="difficulty" aria-pressed="false" aria-label="Alavanca de dificuldade, sem efeito neste cartucho" title="Dificuldade B / A (L). Sem efeito neste cartucho."><span class="lever" aria-hidden="true"></span><span class="label">B · A</span></button>
+            <button id="select-button" class="switch momentary" data-action="select" data-switch="select" aria-label="Selecionar o jogo" title="Selecionar jogo (1 a 4)"><span class="lever" aria-hidden="true"></span><span class="label">GAME SELECT</span></button>
+            <button id="reset-button" class="switch momentary" data-action="reset" data-switch="reset" aria-label="Reiniciar partida" title="Reiniciar partida (R)"><span class="lever" aria-hidden="true"></span><span class="label">GAME RESET</span></button>
+          </div>
+          <span class="led" aria-label="Console ligado"></span>
+        </div>
+      </section>
+
+      <div id="pad" aria-label="Joystick de toque">
+        <div class="dpad" aria-label="Direção">
+          <button class="up" data-dir="up" aria-label="Subir uma fileira ou entrar no iglu">▲</button>
+          <button class="left" data-dir="left" aria-label="Andar para a esquerda">◀</button>
+          <span class="dpad-center" aria-hidden="true"></span>
+          <button class="right" data-dir="right" aria-label="Andar para a direita">▶</button>
+          <button class="down" data-dir="down" aria-label="Descer uma fileira">▼</button>
+        </div>
+        <div class="fire-control"><button id="fire-button" class="fire" data-control="fire" aria-label="Inverter o bloco de gelo">INVERTE</button><span>BOTÃO VERMELHO</span></div>
       </div>
-    </section>
+    </div>
 
     <div class="game-toolbar" aria-label="Controles da partida">
-      <button id="start-button" class="action-button primary" data-action="start"><span id="start-label">COMEÇAR</span> <span>ENTER</span></button>
+      <button id="start-button" class="action-button primary" data-action="start"><span id="start-label">COMEÇAR</span> <span id="start-key">ENTER</span></button>
       <button id="pause-button" class="action-button" data-action="pause" aria-pressed="false"><span id="pause-label">PAUSA</span> <span>P</span></button>
       <button id="mute-button" class="action-button" data-action="mute" aria-pressed="false" aria-label="Alternar som"><span class="sound-icon" aria-hidden="true">♪</span> SOM <span>M</span></button>
       <button id="fullscreen-button" class="action-button" data-action="fullscreen" aria-label="Alternar tela cheia">TELA CHEIA <span>F</span></button>
     </div>
     <p id="status" class="game-status" role="status" aria-live="polite">Aperte Enter ou o botão vermelho para começar a construir.</p>
-
-    <div id="pad" aria-label="Joystick de toque">
-      <div class="dpad" aria-label="Direção">
-        <button class="up" data-dir="up" aria-label="Saltar para a fileira de cima">▲</button>
-        <button class="left" data-dir="left" aria-label="Andar para a esquerda">◀</button>
-        <span class="dpad-center" aria-hidden="true"></span>
-        <button class="right" data-dir="right" aria-label="Andar para a direita">▶</button>
-        <button class="down" data-dir="down" aria-label="Saltar para a fileira de baixo">▼</button>
-      </div>
-      <div class="fire-control"><button id="fire-button" class="fire" data-control="fire" aria-label="Inverter o bloco de gelo">INVERTE</button><span>BOTÃO VERMELHO</span></div>
-    </div>
 
     <section class="manual" aria-labelledby="manual-title">
       <div class="manual-heading"><h2 id="manual-title">Manual do arquiteto</h2><span class="manual-edition">ATARI 2600</span></div>
@@ -58,30 +60,32 @@
         <div>
           <h3>Joystick</h3>
           <ul>
-            <li><kbd>←</kbd> <kbd>→</kbd> ou <kbd>A</kbd> <kbd>D</kbd> andam no gelo.</li>
-            <li><kbd>↑</kbd> <kbd>↓</kbd> ou <kbd>W</kbd> <kbd>S</kbd> saltam entre as fileiras. Dá para corrigir o salto no ar.</li>
-            <li><kbd>ESPAÇO</kbd> / <kbd>Z</kbd> / <kbd>X</kbd> invertem o bloco em que Bailey está. O iglu perde um bloco, a menos que a porta já esteja aberta.</li>
-            <li><kbd>ENTER</kbd> inicia · <kbd>P</kbd> pausa · <kbd>R</kbd> reinicia.</li>
-            <li><kbd>1</kbd> a <kbd>4</kbd> escolhem o jogo. <kbd>M</kbd> som · <kbd>C</kbd> cor · <kbd>F</kbd> tela cheia.</li>
+            <li><kbd>←</kbd> <kbd>→</kbd> ou <kbd>A</kbd> <kbd>D</kbd> andam na margem e no gelo.</li>
+            <li><kbd>↓</kbd> ou <kbd>S</kbd> salta da margem para o gelo e desce uma fileira. <kbd>↑</kbd> ou <kbd>W</kbd> sobe uma fileira e volta à margem. Dá para corrigir o salto no ar.</li>
+            <li>Com o iglu pronto, pare diante da porta e empurre <kbd>↑</kbd> para entrar.</li>
+            <li><kbd>ESPAÇO</kbd> / <kbd>Z</kbd> / <kbd>X</kbd> / <kbd>K</kbd> invertem a fileira em que Bailey está. Custa um bloco do iglu, a menos que ele esteja pronto. Sem blocos ou na margem, nada acontece.</li>
+            <li><kbd>ENTER</kbd> inicia e, durante o jogo, também pausa · <kbd>P</kbd> pausa · <kbd>R</kbd> reinicia.</li>
+            <li><kbd>1</kbd> a <kbd>4</kbd> escolhem o jogo. <kbd>M</kbd> som · <kbd>C</kbd> cor · <kbd>L</kbd> alavanca B/A (sem efeito) · <kbd>F</kbd> tela cheia, onde o navegador permitir.</li>
             <li>No controle, o manche move, um botão de ação inverte o gelo e START inicia ou pausa.</li>
           </ul>
         </div>
         <div>
           <h3>O gelo e o iglu</h3>
           <ul>
-            <li>Pisar num bloco branco acrescenta um bloco ao iglu e pinta a fileira de azul. Azul não pontua de novo.</li>
-            <li>Quando as quatro fileiras ficam azuis, o gelo volta a ser branco.</li>
-            <li>Com 16 blocos a porta abre. Entre no iglu, à direita da margem de cima.</li>
-            <li>Cair na água, encostar numa criatura com os pés no gelo ou deixar a temperatura chegar a zero custa uma vida. No ar, a criatura não alcança.</li>
-            <li>O urso sai da toca na fase 4. A ponta esquerda da margem de cima é o esconderijo.</li>
-            <li>Peixe vale <b>200</b>. Vida extra a cada <b>5.000</b>, até nove reservas. Você começa com uma vida em jogo e três reservas.</li>
+            <li>Cada pouso num bloco branco pontua, acrescenta um bloco ao iglu e pinta a fileira de azul. Quando as quatro ficam azuis, voltam a ser brancas.</li>
+            <li>Quinze blocos e a porta completam o iglu. Depois disso o gelo branco ainda pontua, mas as fileiras azuis não clareiam mais.</li>
+            <li>A temperatura começa em <b>45°</b> e cai cerca de um grau por segundo. Em zero, Bailey congela. Ao entrar no iglu, cada grau restante vira bônus.</li>
+            <li>Gansos, caranguejos e mariscos não matam: empurram Bailey pelo gelo, e ele só se perde se cair no mar. No ar, nada o alcança.</li>
+            <li>Da fase 2 em diante, peixes nadam nas mesmas faixas. Encoste neles sobre o gelo: cada um vale <b>200</b>.</li>
+            <li>O urso polar persegue Bailey na margem a partir da fase 4. O esconderijo é a ponta extrema esquerda da margem, além de onde se chega andando: só um salto do gelo leva Bailey até lá.</li>
+            <li>Perder uma vida não desmancha o iglu. Você começa com uma vida em jogo e três reservas, e ganha outra a cada <b>5.000</b> pontos, até nove. Da fase 21 em diante, o peixe mágico aparece ao lado da temperatura.</li>
           </ul>
         </div>
       </div>
-      <div class="console-state" aria-label="Configuração do console"><span id="game-state">Jogo 1 · regular, um jogador</span><span id="diff-state">Alavanca B · sem efeito no cartucho</span><span id="tv-state">TV colorida</span><span id="mute-state">Som ligado</span></div>
+      <div class="console-state" aria-label="Configuração do console"><span id="game-state">Jogo 1 · regular, um jogador</span><span id="diff-state">Alavanca B · sem efeito no cartucho</span><span id="tv-state">TV colorida</span><span id="mute-state">Som ligado</span><span id="architect-state" class="architect" hidden>Arctic Architect: 40.000 pontos! Na época, a foto desta tela valia o emblema da Activision.</span></div>
     </section>
   </main>
-  <footer>Recriação independente do clássico de Steve Cartwright para o Atari 2600. Não afiliada à Activision, à Polivox ou à CCE.</footer>
+  <footer>Recriação independente do clássico de Steve Cartwright para o Atari 2600. Não afiliada à Activision, à Polyvox (Polivox) ou à CCE.</footer>
 
   <script src="js/config.js"></script>
   <script src="js/sprites.js"></script>

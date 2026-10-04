@@ -1,0 +1,19 @@
+{
+  "name": "frostbite-atari-2600",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Recriação de Frostbite para Atari 2600, jogável no navegador e sem dependências de execução.",
+  "scripts": {
+    "start": "node tools/serve.js",
+    "build": "node tools/build-artifact.js",
+    "test": "node tools/test.js",
+    "test:play": "node tools/test-play.js",
+    "test:browser": "node tools/browser-test.js"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

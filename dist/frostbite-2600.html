@@ -1,0 +1,1854 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10141c">
+  <meta name="description" content="Recriação de Frostbite do Atari 2600 para jogar no navegador, com teclado, controle ou toque.">
+  <title>Frostbite · Atari 2600</title>
+  <style>
+:root {
+  color-scheme: dark;
+  --room: #10141c;
+  --paper: #e7eef8;
+  --paper-dim: #a9b6c9;
+  --amber: #d7e7ff;
+  --amber-light: #f4fbff;
+  --wood: #5b3923;
+  --wood-hi: #794b2c;
+  --wood-dark: #392516;
+  --fire: #c62b20;
+}
+
+* { box-sizing: border-box; }
+html { margin: 0; background: var(--room); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100svh;
+  padding: 30px 20px 32px;
+  color: var(--paper);
+  font-family: "Courier New", Courier, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  background: radial-gradient(ellipse at 50% 26%, #1a2740 0, #121820 36%, var(--room) 72%);
+}
+button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button:focus-visible, canvas:focus-visible { outline: 3px solid var(--amber-light); outline-offset: 4px; }
+button:disabled { opacity: .45; cursor: default; }
+button, canvas { touch-action: manipulation; }
+.marquee { max-width: 770px; margin: 0 auto 21px; text-align: center; }
+.eyebrow { margin: 0 0 6px; font-size: 10px; letter-spacing: 3px; color: var(--paper-dim); }
+.marquee h1 { margin: 0; font-weight: 900; font-size: clamp(30px, 6.5vw, 49px); line-height: 1.13; letter-spacing: 6px; color: var(--amber-light); text-shadow: 3px 3px 0 #243044, 0 0 27px #8ec6ff33; }
+.subtitle { margin: 8px 0 0; font-size: 12px; letter-spacing: 1px; color: var(--paper-dim); }
+.stripes { display: flex; width: min(100%, 550px); height: 5px; margin: 17px auto 0; }
+.stripes span { flex: 1; }
+.stripes span:nth-child(1) { background: #be3c30; }
+.stripes span:nth-child(2) { background: #e17a27; }
+.stripes span:nth-child(3) { background: #e8b739; }
+.stripes span:nth-child(4) { background: #55934c; }
+.stripes span:nth-child(5) { background: #4c70a8; }
+.game-room { width: fit-content; max-width: 100%; margin: 0 auto; }
+.tv { width: fit-content; max-width: 100%; margin-inline: auto; padding: 22px 23px 16px; border: 1px solid #2c3848; border-radius: 24px; background: linear-gradient(145deg, #243044, #141820 40%, #0e1218); box-shadow: 0 22px 65px #0009, 0 0 80px #7eb6ff18, inset 0 1px 0 #ffffff0e; }
+.crt { position: relative; width: fit-content; overflow: hidden; border: 8px solid #090907; border-radius: 15px; background: #050607; box-shadow: 0 0 0 1px #3a4658, 0 5px 10px #000a, inset 0 0 30px #000; }
+#screen { display: block; width: min(72vw, 760px, max(340px, calc((100svh - 410px) * 4 / 3))); max-width: 100%; aspect-ratio: 4 / 3; height: auto; image-rendering: pixelated; image-rendering: crisp-edges; background: #000; cursor: crosshair; touch-action: none; filter: saturate(1.05) contrast(1.03); }
+#screen.bw { filter: grayscale(1) contrast(1.1); }
+.crt::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 8px; background: radial-gradient(ellipse at 30% 10%, #ffffff0b 0, transparent 46%), radial-gradient(ellipse at 50% 45%, transparent 57%, #00000054 100%); }
+.deck { display: flex; align-items: center; gap: 13px; margin-top: 16px; padding: 10px 14px 9px; border-radius: 5px; background: repeating-linear-gradient(92deg, var(--wood) 0, var(--wood-hi) 7px, var(--wood) 14px, var(--wood-dark) 26px, var(--wood) 34px); box-shadow: inset 0 2px 5px #0008, inset 0 -1px 0 #ffffff12; }
+.console-brand { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1px; line-height: 1.2; }
+.brand { font-size: 8px; font-weight: bold; letter-spacing: 1px; text-shadow: 1px 1px #000a; white-space: nowrap; }
+.model { font-size: 15px; font-weight: bold; letter-spacing: 4px; color: #c7aa79; }
+.switches { display: flex; gap: 17px; margin-left: auto; }
+.switch { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 4px 2px; border: 0; background: transparent; color: var(--paper); }
+.switch .lever { position: relative; display: block; width: 16px; height: 24px; border-radius: 3px; background: linear-gradient(#090807, #211b15); box-shadow: inset 0 1px 3px #000, 0 1px 0 #ffffff15; }
+.switch .lever::after { content: ""; position: absolute; inset: 2px 3px auto; height: 10px; border-radius: 2px; background: linear-gradient(#e2ddcf, #888173); box-shadow: 0 1px 3px #000b; transition: transform .12s; }
+.switch[aria-pressed="true"] .lever::after, .switch.momentary:active .lever::after { transform: translateY(10px); }
+.switch .label { font-size: 7px; font-weight: bold; line-height: 1.2; letter-spacing: .3px; white-space: nowrap; text-shadow: 1px 1px #0009; }
+.led { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: #ed432b; box-shadow: 0 0 8px #ed432b, 0 0 16px #ed432b44; }
+.game-toolbar { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 19px; }
+.action-button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-height: 38px; padding: 9px 12px; color: var(--paper-dim); border: 1px solid #3d4e66; border-radius: 4px; background: #161c28; font-size: 10px; font-weight: bold; letter-spacing: .6px; box-shadow: inset 0 1px 0 #ffffff08, 0 2px 0 #0005; }
+.action-button span { color: #8ea0b8; font-size: 9px; }
+.action-button:hover { color: var(--amber-light); border-color: #8eb6e0; background: #1e2838; }
+.action-button:active { transform: translateY(1px); }
+.action-button.primary { color: var(--amber-light); background: #243044; border-color: #6e8eae; }
+.action-button[aria-pressed="true"] { color: var(--amber-light); border-color: #9ec0e4; background: #2a384c; }
+.sound-icon { font-size: 15px !important; line-height: 1; color: inherit !important; }
+.game-status { margin: 11px 0 0; min-height: 20px; color: #9aabbf; text-align: center; font-size: 11px; }
+#pad { display: none; justify-content: space-between; align-items: center; width: min(100%, 390px); gap: 20px; margin: 16px auto 8px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.dpad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 48px); gap: 4px; }
+.dpad button, .dpad-center { border: 1px solid #314158; border-radius: 7px; background: linear-gradient(#222a38, #141820); box-shadow: 0 3px 0 #050403; color: var(--amber); font-size: 16px; touch-action: none; }
+.dpad .up { grid-area: 1 / 2; }
+.dpad .left { grid-area: 2 / 1; }
+.dpad .right { grid-area: 2 / 3; }
+.dpad .down { grid-area: 3 / 2; }
+.dpad-center { grid-area: 2 / 2; background: #1a2230; box-shadow: inset 0 0 8px #0006; }
+#pad button:active, #pad button.held { transform: translateY(2px); box-shadow: 0 1px 0 #050403; background: #2c3c52; }
+.fire-control { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.fire-control > span { font-size: 7px; color: #9aabbf; letter-spacing: .4px; }
+#pad .fire { width: 100px; height: 100px; border: 4px solid #1d1610; border-radius: 50%; color: #ffe4ca; background: radial-gradient(circle at 35% 25%, #e95543, var(--fire) 60%, #84180f); box-shadow: 0 5px 0 #080504, 0 0 20px #c62b2025; font-size: 13px; font-weight: bold; letter-spacing: 1px; touch-action: none; }
+#pad .fire:active, #pad .fire.held { transform: translateY(3px); box-shadow: 0 2px 0 #080504; background: radial-gradient(circle at 35% 25%, #f07357, #cf3426 60%, #84180f); }
+.manual { margin-top: 24px; width: 0; min-width: 100%; border: 1px solid #2c3c50; border-radius: 5px; background: linear-gradient(#182030, #121820); padding: 18px 20px 0; }
+.manual-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 11px; border-bottom: 1px solid #2c3c50; }
+.manual h2 { margin: 0; color: var(--amber-light); text-transform: uppercase; font-size: 12px; font-weight: bold; letter-spacing: 2px; }
+.manual-edition { color: #7d8da0; font-size: 9px; letter-spacing: 1px; white-space: nowrap; }
+.manual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; padding: 15px 0 17px; }
+.manual h3 { margin: 0 0 9px; color: #d5e4f5; font-size: 11px; font-weight: bold; }
+.manual ul { padding: 0; margin: 0; list-style: none; }
+.manual li { margin: 0 0 7px; color: var(--paper-dim); font-size: 11px; }
+.manual li:last-child { margin-bottom: 0; }
+.manual b { color: #e7eef8; font-weight: bold; }
+kbd { display: inline-block; margin: 0 1px; padding: 1px 4px; border: 1px solid #3d5168; border-radius: 3px; color: #e7eef8; background: #243044; font: inherit; font-size: 9px; line-height: 1.4; box-shadow: 0 1px 0 #0a0704; }
+.console-state { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 5px 16px; padding: 11px 0; border-top: 1px solid #2c3c50; color: #8ea0b4; font-size: 9px; }
+footer { max-width: 760px; margin: 24px auto 0; text-align: center; color: #7d8da0; font-size: 10px; }
+.tv:fullscreen, .tv:-webkit-full-screen { width: 100%; height: 100%; padding: 0; border: 0; border-radius: 0; background: #080a10; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+.tv:fullscreen .crt, .tv:-webkit-full-screen .crt { border-width: 0; border-radius: 0; }
+.tv:fullscreen #screen, .tv:-webkit-full-screen #screen { width: min(100vw, calc(100vh * 4 / 3)); }
+.tv:fullscreen .deck, .tv:-webkit-full-screen .deck { display: none; }
+@media (pointer: coarse) { #pad { display: flex; } }
+body.touch #pad { display: flex; }
+@media (max-width: 650px) {
+  body { padding: 23px 14px 27px; }
+  .marquee { margin-bottom: 17px; }
+  .marquee h1 { letter-spacing: 4px; }
+  .eyebrow { font-size: 8px; letter-spacing: 2px; }
+  .subtitle { font-size: 10px; }
+  .tv { padding: 13px 12px 11px; border-radius: 18px; }
+  .crt { border-width: 5px; border-radius: 11px; }
+  #screen { width: calc(100vw - 66px); }
+  .deck { padding: 8px 10px; gap: 9px; margin-top: 12px; }
+  .brand { font-size: 6px; letter-spacing: .1px; }
+  .model { font-size: 12px; }
+  .switches { gap: 8px; }
+  .switch .label { font-size: 5px; letter-spacing: 0; }
+  .led { flex-basis: 5px; width: 5px; height: 5px; }
+  .action-button { padding: 9px; font-size: 9px; gap: 6px; }
+  .action-button span { font-size: 8px; }
+  .manual { padding: 16px 16px 0; margin-top: 18px; }
+  .manual-grid { grid-template-columns: 1fr; gap: 18px; }
+  .manual li { font-size: 11px; }
+  .console-state { justify-content: flex-start; }
+}
+@media (max-width: 370px) {
+  .console-brand { display: none; }
+  .switches { margin-left: 0; justify-content: space-around; flex: 1; }
+  .dpad { grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); }
+  #pad .fire { width: 88px; height: 88px; }
+}
+@media (max-height: 600px) and (min-width: 651px) {
+  body { padding-top: 16px; }
+  .marquee { margin-bottom: 12px; }
+  .marquee h1 { font-size: 31px; }
+  .eyebrow { font-size: 8px; }
+  .subtitle { margin-top: 4px; font-size: 10px; }
+  .stripes { margin-top: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .switch .lever::after { transition: none; } }
+
+</style>
+</head>
+<body>
+  <header class="marquee">
+    <p class="eyebrow">ACTIVISION · 1983 · STEVE CARTWRIGHT</p>
+    <h1>FROSTBITE</h1>
+    <p class="subtitle">Construa o iglu antes que o frio vença.</p>
+    <div class="stripes" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+  </header>
+
+  <main class="game-room">
+    <section class="tv" aria-label="Frostbite no televisor">
+      <div class="crt">
+        <canvas id="screen" width="160" height="192" tabindex="0" aria-label="Tela de Frostbite. Setas movem Bailey, espaço inverte o gelo e Enter inicia."></canvas>
+      </div>
+      <div class="deck">
+        <div class="console-brand"><span class="brand">VIDEO COMPUTER SYSTEM</span><span class="model">2600</span></div>
+        <div class="switches" aria-label="Chaves do console">
+          <button id="color-switch" class="switch" data-action="color" data-switch="tv" aria-pressed="false" aria-label="Alternar TV colorida e preto e branco" title="Cor / preto e branco (C)"><span class="lever" aria-hidden="true"></span><span class="label">COR · P&amp;B</span></button>
+          <button id="difficulty-switch" class="switch" data-action="difficulty" data-switch="difficulty" aria-pressed="false" aria-label="Alavanca de dificuldade, sem efeito neste cartucho" title="Dificuldade B / A (L). Sem efeito neste cartucho."><span class="lever" aria-hidden="true"></span><span class="label">B · A</span></button>
+          <button id="select-button" class="switch momentary" data-action="select" data-switch="select" aria-label="Selecionar o jogo" title="Selecionar jogo (1 a 4)"><span class="lever" aria-hidden="true"></span><span class="label">GAME SELECT</span></button>
+          <button id="reset-button" class="switch momentary" data-action="reset" data-switch="reset" aria-label="Reiniciar partida" title="Reiniciar partida (R)"><span class="lever" aria-hidden="true"></span><span class="label">GAME RESET</span></button>
+        </div>
+        <span class="led" aria-label="Console ligado"></span>
+      </div>
+    </section>
+
+    <div class="game-toolbar" aria-label="Controles da partida">
+      <button id="start-button" class="action-button primary" data-action="start"><span id="start-label">COMEÇAR</span> <span>ENTER</span></button>
+      <button id="pause-button" class="action-button" data-action="pause" aria-pressed="false"><span id="pause-label">PAUSA</span> <span>P</span></button>
+      <button id="mute-button" class="action-button" data-action="mute" aria-pressed="false" aria-label="Alternar som"><span class="sound-icon" aria-hidden="true">♪</span> SOM <span>M</span></button>
+      <button id="fullscreen-button" class="action-button" data-action="fullscreen" aria-label="Alternar tela cheia">TELA CHEIA <span>F</span></button>
+    </div>
+    <p id="status" class="game-status" role="status" aria-live="polite">Aperte Enter ou o botão vermelho para começar a construir.</p>
+
+    <div id="pad" aria-label="Joystick de toque">
+      <div class="dpad" aria-label="Direção">
+        <button class="up" data-dir="up" aria-label="Saltar para a fileira de cima">▲</button>
+        <button class="left" data-dir="left" aria-label="Andar para a esquerda">◀</button>
+        <span class="dpad-center" aria-hidden="true"></span>
+        <button class="right" data-dir="right" aria-label="Andar para a direita">▶</button>
+        <button class="down" data-dir="down" aria-label="Saltar para a fileira de baixo">▼</button>
+      </div>
+      <div class="fire-control"><button id="fire-button" class="fire" data-control="fire" aria-label="Inverter o bloco de gelo">INVERTE</button><span>BOTÃO VERMELHO</span></div>
+    </div>
+
+    <section class="manual" aria-labelledby="manual-title">
+      <div class="manual-heading"><h2 id="manual-title">Manual do arquiteto</h2><span class="manual-edition">ATARI 2600</span></div>
+      <div class="manual-grid">
+        <div>
+          <h3>Joystick</h3>
+          <ul>
+            <li><kbd>←</kbd> <kbd>→</kbd> ou <kbd>A</kbd> <kbd>D</kbd> andam no gelo.</li>
+            <li><kbd>↑</kbd> <kbd>↓</kbd> ou <kbd>W</kbd> <kbd>S</kbd> saltam entre as fileiras. Dá para corrigir o salto no ar.</li>
+            <li><kbd>ESPAÇO</kbd> / <kbd>Z</kbd> / <kbd>X</kbd> invertem o bloco em que Bailey está. O iglu perde um bloco, a menos que a porta já esteja aberta.</li>
+            <li><kbd>ENTER</kbd> inicia · <kbd>P</kbd> pausa · <kbd>R</kbd> reinicia.</li>
+            <li><kbd>1</kbd> a <kbd>4</kbd> escolhem o jogo. <kbd>M</kbd> som · <kbd>C</kbd> cor · <kbd>F</kbd> tela cheia.</li>
+            <li>No controle, o manche move, um botão de ação inverte o gelo e START inicia ou pausa.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>O gelo e o iglu</h3>
+          <ul>
+            <li>Pisar num bloco branco acrescenta um bloco ao iglu e pinta a fileira de azul. Azul não pontua de novo.</li>
+            <li>Quando as quatro fileiras ficam azuis, o gelo volta a ser branco.</li>
+            <li>Com 16 blocos a porta abre. Entre no iglu, à direita da margem de cima.</li>
+            <li>Cair na água, encostar numa criatura com os pés no gelo ou deixar a temperatura chegar a zero custa uma vida. No ar, a criatura não alcança.</li>
+            <li>O urso sai da toca na fase 4. A ponta esquerda da margem de cima é o esconderijo.</li>
+            <li>Peixe vale <b>200</b>. Vida extra a cada <b>5.000</b>, até nove reservas. Você começa com uma vida em jogo e três reservas.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="console-state" aria-label="Configuração do console"><span id="game-state">Jogo 1 · regular, um jogador</span><span id="diff-state">Alavanca B · sem efeito no cartucho</span><span id="tv-state">TV colorida</span><span id="mute-state">Som ligado</span></div>
+    </section>
+  </main>
+  <footer>Recriação independente do clássico de Steve Cartwright para o Atari 2600. Não afiliada à Activision, à Polivox ou à CCE.</footer>
+
+  <script>
+window.FB = window.FB || {};
+
+// Native Atari coordinates. CSS stretches the 160×192 frame into a 4:3 television.
+window.FB.Config = (function () {
+  'use strict';
+
+  const DAY = {
+    water: '#2A38C8',
+    waterDeep: '#1A228C',
+    snow: '#F4F7FF',
+    snowShadow: '#C5D2E6',
+    alcove: '#8EA4C4',
+    ice: '#F7FBFF',
+    iceEdge: '#8EACD4',
+    iceUsed: '#5C92F0',
+    iceUsedEdge: '#2A58B0',
+    hud: '#12141C',
+    hudLine: '#07080C',
+    score: '#F6E27A',
+    temp: '#73F2B2',
+    tempLow: '#FF5C48',
+    text: '#F6E27A',
+    textDim: '#D5D2C0',
+    bailey: '#F4F7FF',
+    skin: '#F0C090',
+    boot: '#1A1A1A',
+    bear: '#F7F7F7',
+    bearDark: '#1C1C1C',
+    fish: '#3DDC6A',
+    fishBelly: '#E8FFF0',
+    goose: '#F4F7FF',
+    beak: '#F0A030',
+    crab: '#E24B3A',
+    crabDark: '#6A140C',
+    clam: '#D06AD8',
+    clamDark: '#5A2060',
+    igloo: '#F4F7FF',
+    iglooEdge: '#7E96B4',
+    door: '#1A1208',
+    splash: '#D6E4FF',
+    player2: '#8FD0FF',
+    night: false,
+  };
+
+  const NIGHT = {
+    water: '#14183A',
+    waterDeep: '#0C1024',
+    snow: '#D4D2E4',
+    snowShadow: '#8E8CA4',
+    alcove: '#3A3C58',
+    ice: '#E4E2F4',
+    iceEdge: '#6A7098',
+    iceUsed: '#4A62B0',
+    iceUsedEdge: '#243468',
+    hud: '#0C0C14',
+    hudLine: '#050508',
+    score: '#F6E27A',
+    temp: '#9AF0C8',
+    tempLow: '#FF6A58',
+    text: '#F6E27A',
+    textDim: '#C8C6D4',
+    bailey: '#F4F4FF',
+    skin: '#E8B888',
+    boot: '#0C0C10',
+    bear: '#E4E4F0',
+    bearDark: '#101018',
+    fish: '#4AE07A',
+    fishBelly: '#E8FFF0',
+    goose: '#E4E4F4',
+    beak: '#F0A030',
+    crab: '#E05040',
+    crabDark: '#401008',
+    clam: '#C060D0',
+    clamDark: '#401848',
+    igloo: '#E8E6F4',
+    iglooEdge: '#5A6080',
+    door: '#100C08',
+    splash: '#A8B4D8',
+    player2: '#80C8FF',
+    night: true,
+  };
+
+  // Bottom shore, four ice rows, top shore. `top` is the surface the feet stand on.
+  const LANES = [
+    { top: 168, height: 24, kind: 'shore' },
+    { top: 142, height: 14, kind: 'ice' },
+    { top: 116, height: 14, kind: 'ice' },
+    { top: 90, height: 14, kind: 'ice' },
+    { top: 64, height: 14, kind: 'ice' },
+    { top: 16, height: 34, kind: 'shore' },
+  ];
+
+  const TUNE = {
+    period: 160,
+    walkSpeed: 46,
+    airSpeed: 62,
+    airPerLevel: 3,
+    jumpTime: 0.3,
+    half: 3,
+    floeSpeed: [26, 34, 30, 40],
+    floePerLevel: 3.1,
+    floeMax: 86,
+    enemySpeed: 18,
+    enemyPerLevel: 2.1,
+    enemyMax: 52,
+    bearSpeed: 16,
+    bearPerLevel: 1.8,
+    bearMax: 46,
+    bearMinX: 36,
+    bearMaxX: 152,
+    hideout: 26,
+    iglooX: 116,
+    iglooY: 18,
+    iglooCell: 8,
+    doorX: 120,
+    doorW: 24,
+    blocksNeeded: 16,
+    startLives: 4,
+    maxLives: 10,
+    extraLifeEvery: 5000,
+    fishScore: 200,
+    magicFishScore: 100000,
+    scoreCap: 999999,
+    deathTime: 1.05,
+    clearTime: 1.45,
+    startX: 78,
+  };
+
+  function tier(level) {
+    return Math.min(Math.max(1, level), 9);
+  }
+
+  function icePoints(level) {
+    return tier(level) * 10;
+  }
+
+  function enterPoints(level) {
+    return tier(level) * 160;
+  }
+
+  function degreePoints(level, degrees) {
+    return 10 * degrees * level;
+  }
+
+  function startDegrees(level) {
+    return Math.max(20, 50 - (level - 1) * 2);
+  }
+
+  function degreeRate(level) {
+    return 0.82 + (level - 1) * 0.1;
+  }
+
+  function startingLevel(mode) {
+    return mode >= 3 ? 5 : 1;
+  }
+
+  function twoPlayers(mode) {
+    return mode === 2 || mode === 4;
+  }
+
+  function isNight(level) {
+    return Math.floor((level - 1) / 4) % 2 === 1;
+  }
+
+  function palette(level) {
+    return isNight(level) ? NIGHT : DAY;
+  }
+
+  function floeSpeed(row, level) {
+    return Math.min(TUNE.floeMax, TUNE.floeSpeed[row] + (level - 1) * TUNE.floePerLevel);
+  }
+
+  function enemySpeed(level) {
+    return Math.min(TUNE.enemyMax, TUNE.enemySpeed + (level - 1) * TUNE.enemyPerLevel);
+  }
+
+  function bearSpeed(level) {
+    return Math.min(TUNE.bearMax, TUNE.bearSpeed + Math.max(0, level - 4) * TUNE.bearPerLevel);
+  }
+
+  const C = {
+    W: 160,
+    H: 192,
+    HUD: 16,
+    LANES: LANES,
+    TUNE: TUNE,
+    DAY: DAY,
+    NIGHT: NIGHT,
+    palette: palette,
+    isNight: isNight,
+    tier: tier,
+    icePoints: icePoints,
+    enterPoints: enterPoints,
+    degreePoints: degreePoints,
+    startDegrees: startDegrees,
+    degreeRate: degreeRate,
+    startingLevel: startingLevel,
+    twoPlayers: twoPlayers,
+    floeSpeed: floeSpeed,
+    enemySpeed: enemySpeed,
+    bearSpeed: bearSpeed,
+  };
+
+  return C;
+})();
+
+window.FB.config = window.FB.Config;
+
+</script>
+  <script>
+window.FB = window.FB || {};
+
+// '.' is empty. '1', '2' and '3' pick the three inks passed at draw time.
+window.FB.Sprites = (function () {
+  'use strict';
+
+  function mirror(bitmap) {
+    return bitmap.map(function (row) { return row.split('').reverse().join(''); });
+  }
+
+  const bailey = [
+    '..22....',
+    '.2222...',
+    '..212...',
+    '.11111..',
+    '1111111.',
+    '.11111..',
+    '..1.1...',
+    '..1.1...',
+    '.33.33..',
+    '33...33.',
+  ];
+
+  const baileyJump = [
+    '..22....',
+    '.2222...',
+    '112.1111',
+    '.111111.',
+    '..1111..',
+    '..1.1...',
+    '.33.33..',
+    '33...33.',
+  ];
+
+  const bear = [
+    '2..22..2',
+    '.222222.',
+    '22222222',
+    '22122122',
+    '22222222',
+    '.222222.',
+    '.22..22.',
+    '.22..22.',
+  ];
+
+  const fish = [
+    '..1111..',
+    '.111221.',
+    '11111111',
+    '.111111.',
+  ];
+
+  const goose = [
+    [
+      '..111111',
+      '.1111111',
+      '11111.31',
+      '.1111...',
+      '..11....',
+    ],
+    [
+      '111111..',
+      '.111111.',
+      '11111.31',
+      '.1111...',
+      '..11....',
+    ],
+  ];
+
+  const crab = [
+    '3......3',
+    '.111111.',
+    '11111111',
+    '.1.11.1.',
+    '..1..1..',
+  ];
+
+  const clam = [
+    [
+      '.222222.',
+      '22211222',
+      '.222222.',
+    ],
+    [
+      '222..222',
+      '2......2',
+      '222..222',
+    ],
+  ];
+
+  const splash = [
+    '...1.1..',
+    '.1.....1',
+    '1..111..',
+    '.111111.',
+    '11111111',
+    '.111111.',
+  ];
+
+  const magic = [
+    '...1....',
+    '..1111..',
+    '.112211.',
+    '11111111',
+    '.111111.',
+  ];
+
+  return {
+    bailey: bailey,
+    baileyLeft: mirror(bailey),
+    baileyJump: baileyJump,
+    baileyJumpLeft: mirror(baileyJump),
+    bear: bear,
+    bearLeft: mirror(bear),
+    fish: fish,
+    goose: goose[0],
+    gooseFlap: goose[1],
+    gooseFrames: goose,
+    crab: crab,
+    clam: clam[0],
+    clamOpen: clam[1],
+    splash: splash,
+    magic: magic,
+    mirror: mirror,
+  };
+})();
+
+// 5×7 bitmap letters for the HUD and the title cards.
+window.FB.Font = {
+  A: ['01110', '11011', '11011', '11111', '11011', '11011', '11011'],
+  B: ['11110', '11011', '11011', '11110', '11011', '11011', '11110'],
+  C: ['01111', '11000', '11000', '11000', '11000', '11000', '01111'],
+  D: ['11110', '11011', '11011', '11011', '11011', '11011', '11110'],
+  E: ['11111', '11000', '11000', '11110', '11000', '11000', '11111'],
+  F: ['11111', '11000', '11000', '11110', '11000', '11000', '11000'],
+  G: ['01111', '11000', '11000', '11011', '11011', '11011', '01111'],
+  H: ['11011', '11011', '11011', '11111', '11011', '11011', '11011'],
+  I: ['11111', '00100', '00100', '00100', '00100', '00100', '11111'],
+  J: ['00111', '00011', '00011', '00011', '11011', '11011', '01110'],
+  K: ['11011', '11011', '11110', '11100', '11110', '11011', '11011'],
+  L: ['11000', '11000', '11000', '11000', '11000', '11000', '11111'],
+  M: ['10001', '11011', '11111', '11111', '11011', '11011', '11011'],
+  N: ['10001', '11001', '11101', '10101', '10111', '10011', '10001'],
+  O: ['01110', '11011', '11011', '11011', '11011', '11011', '01110'],
+  P: ['11110', '11011', '11011', '11110', '11000', '11000', '11000'],
+  Q: ['01110', '11011', '11011', '11011', '11111', '01111', '00011'],
+  R: ['11110', '11011', '11011', '11110', '11100', '11011', '11011'],
+  S: ['01111', '11000', '11000', '01110', '00011', '00011', '11110'],
+  T: ['11111', '00100', '00100', '00100', '00100', '00100', '00100'],
+  U: ['11011', '11011', '11011', '11011', '11011', '11011', '01110'],
+  V: ['11011', '11011', '11011', '11011', '11011', '01110', '00100'],
+  W: ['11011', '11011', '11011', '11111', '11111', '11011', '10001'],
+  X: ['11011', '11011', '01110', '00100', '01110', '11011', '11011'],
+  Y: ['11011', '11011', '01110', '00100', '00100', '00100', '00100'],
+  Z: ['11111', '00011', '00110', '01100', '11000', '11000', '11111'],
+  0: ['01110', '11011', '11011', '11011', '11011', '11011', '01110'],
+  1: ['00100', '01100', '00100', '00100', '00100', '00100', '01110'],
+  2: ['01110', '11011', '00011', '00110', '01100', '11000', '11111'],
+  3: ['11110', '00011', '00011', '01110', '00011', '00011', '11110'],
+  4: ['00011', '00111', '01111', '11011', '11111', '00011', '00011'],
+  5: ['11111', '11000', '11110', '00011', '00011', '11011', '01110'],
+  6: ['01110', '11000', '11110', '11011', '11011', '11011', '01110'],
+  7: ['11111', '00011', '00011', '00110', '01100', '01100', '01100'],
+  8: ['01110', '11011', '11011', '01110', '11011', '11011', '01110'],
+  9: ['01110', '11011', '11011', '01111', '00011', '00011', '01110'],
+  '-': ['00000', '00000', '00000', '11111', '00000', '00000', '00000'],
+  '.': ['00000', '00000', '00000', '00000', '00000', '01100', '01100'],
+  ',': ['00000', '00000', '00000', '00000', '00110', '00100', '01000'],
+  ':': ['00000', '00100', '00100', '00000', '00100', '00100', '00000'],
+  '!': ['00100', '00100', '00100', '00100', '00100', '00000', '00100'],
+  '?': ['01110', '11011', '00011', '00110', '00100', '00000', '00100'],
+  ' ': ['00000', '00000', '00000', '00000', '00000', '00000', '00000'],
+  '°': ['01100', '10010', '10010', '01100', '00000', '00000', '00000'],
+};
+
+window.FB.sprites = window.FB.Sprites;
+
+</script>
+  <script>
+window.FB = window.FB || {};
+
+// Four ice rows tile the 160-pixel screen. Gaps are water; the pieces wrap.
+window.FB.World = (function () {
+  'use strict';
+
+  const C = window.FB.Config;
+  const PERIOD = C.TUNE.period;
+
+  const PATTERNS = [
+    [[0, 50], [66, 40], [122, 24]],
+    [[0, 36], [52, 30], [98, 26], [138, 12]],
+    [[6, 30], [50, 28], [96, 24], [136, 14]],
+    [[0, 22], [38, 18], [72, 20], [108, 16], [140, 12]],
+  ];
+
+  function wrap(value, mod) {
+    const m = mod || PERIOD;
+    return ((value % m) + m) % m;
+  }
+
+  function wrapDelta(a, b, mod) {
+    const m = mod || PERIOD;
+    let delta = wrap(a - b, m);
+    if (delta > m / 2) delta -= m;
+    return delta;
+  }
+
+  function segments(pattern, offset) {
+    const out = [];
+    for (let i = 0; i < pattern.length; i++) {
+      const start = wrap(pattern[i][0] + offset);
+      const width = pattern[i][1];
+      if (start + width <= PERIOD) out.push({ x: start, w: width });
+      else {
+        out.push({ x: start, w: PERIOD - start });
+        out.push({ x: 0, w: start + width - PERIOD });
+      }
+    }
+    return out;
+  }
+
+  function feetOn(pieces, x, half) {
+    const span = half == null ? C.TUNE.half : half;
+    const samples = [x - span, x, x + span];
+    for (let i = 0; i < samples.length; i++) {
+      const point = wrap(samples[i]);
+      let supported = false;
+      for (let s = 0; s < pieces.length; s++) {
+        const piece = pieces[s];
+        if (point >= piece.x && point <= piece.x + piece.w) {
+          supported = true;
+          break;
+        }
+      }
+      if (!supported) return false;
+    }
+    return true;
+  }
+
+  function enemiesFor(level) {
+    const plan = [];
+    function add(type, row) { plan.push({ type: type, row: row }); }
+    if (level >= 1) add('goose', 1);
+    if (level >= 2) add('clam', 2);
+    if (level >= 3) add('crab', 0);
+    if (level >= 4) add('goose', 3);
+    if (level >= 6) add('clam', 3);
+    if (level >= 8) add('crab', 2);
+    if (level >= 10) add('goose', 0);
+    return plan;
+  }
+
+  function create(level) {
+    const rows = PATTERNS.map(function (pattern, index) {
+      return {
+        index: index,
+        pattern: pattern,
+        offset: wrap(12 + index * 47 + level * 13),
+        dir: index % 2 === 0 ? 1 : -1,
+        speed: C.floeSpeed(index, level),
+        white: true,
+      };
+    });
+
+    const plan = enemiesFor(level);
+    const enemies = plan.map(function (item, index) {
+      return {
+        type: item.type,
+        row: item.row,
+        x: wrap(28 + index * 46 + level * 9),
+        dir: index % 2 === 0 ? 1 : -1,
+        speed: C.enemySpeed(level),
+        timer: index * 0.37,
+        paused: false,
+      };
+    });
+
+    const fish = [0, 2, 4].map(function (gap, index) {
+      return {
+        gap: gap,
+        x: wrap(24 + index * 52),
+        dir: index % 2 === 0 ? 1 : -1,
+        speed: 22 + index * 6 + (level % 3) * 2,
+        alive: true,
+        respawn: 0,
+      };
+    });
+
+    const bear = level >= 4 ? {
+      x: 96,
+      dir: level % 2 === 0 ? -1 : 1,
+      speed: C.bearSpeed(level),
+    } : null;
+
+    return { rows: rows, enemies: enemies, fish: fish, bear: bear, period: PERIOD };
+  }
+
+  return {
+    PATTERNS: PATTERNS,
+    PERIOD: PERIOD,
+    wrap: wrap,
+    wrapDelta: wrapDelta,
+    segments: segments,
+    feetOn: feetOn,
+    enemiesFor: enemiesFor,
+    create: create,
+  };
+})();
+
+</script>
+  <script>
+(function () {
+  'use strict';
+
+  var FB = window.FB = window.FB || {};
+  var context = null;
+  var master = null;
+  var resuming = false;
+  var lastChill = -1;
+  var Audio = { muted: false, available: true };
+
+  function oscillator(frequency, type) {
+    var source = context.createOscillator();
+    source.type = type || 'square';
+    source.frequency.value = frequency;
+    return source;
+  }
+
+  function initialize() {
+    var Context = window.AudioContext || window.webkitAudioContext;
+    if (!Context) {
+      Audio.available = false;
+      return;
+    }
+    try {
+      context = new Context({ latencyHint: 'interactive' });
+      master = context.createGain();
+      master.gain.value = Audio.muted ? 0 : 0.28;
+      master.connect(context.destination);
+    } catch (error) {
+      context = null;
+      Audio.available = false;
+    }
+  }
+
+  function unlock() {
+    if (!context && Audio.available) initialize();
+    if (context && context.state === 'suspended' && !resuming) {
+      resuming = true;
+      context.resume().then(function () { resuming = false; }, function () { resuming = false; });
+    }
+  }
+
+  function setMuted(muted) {
+    Audio.muted = !!muted;
+    if (master && context) master.gain.setTargetAtTime(Audio.muted ? 0 : 0.28, context.currentTime, 0.015);
+  }
+
+  function ready() {
+    return !!(context && context.state === 'running' && !Audio.muted);
+  }
+
+  function tone(frequency, endFrequency, duration, gain, offset) {
+    if (!ready()) return;
+    var start = context.currentTime + (offset || 0);
+    var source = oscillator(frequency, 'square');
+    var volume = context.createGain();
+    source.frequency.setValueAtTime(frequency, start);
+    source.frequency.exponentialRampToValueAtTime(Math.max(30, endFrequency), start + duration);
+    volume.gain.setValueAtTime(0, start);
+    volume.gain.linearRampToValueAtTime(gain, start + 0.008);
+    volume.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    source.connect(volume);
+    volume.connect(master);
+    source.start(start);
+    source.stop(start + duration + 0.02);
+    source.onended = function () { source.disconnect(); volume.disconnect(); };
+  }
+
+  function jump() { tone(190, 340, 0.07, 0.12); }
+  function block() { tone(480, 360, 0.06, 0.14); }
+  function fish() {
+    tone(560, 560, 0.07, 0.13);
+    tone(760, 640, 0.1, 0.12, 0.07);
+  }
+  function reverse() { tone(110, 70, 0.09, 0.12); }
+  function door() {
+    [330, 440, 554].forEach(function (frequency, index) {
+      tone(frequency, frequency, 0.09, 0.12, index * 0.08);
+    });
+  }
+  function clear() {
+    [262, 330, 392, 523].forEach(function (frequency, index) {
+      tone(frequency, frequency, 0.12, 0.13, index * 0.1);
+    });
+  }
+  function fall() { tone(360, 55, 0.42, 0.18); }
+  function freeze() { tone(180, 40, 0.7, 0.14); }
+  function caught() { tone(240, 70, 0.36, 0.16); }
+  function extraLife() {
+    [523, 659, 784].forEach(function (frequency, index) {
+      tone(frequency, frequency, 0.1, 0.12, index * 0.09);
+    });
+  }
+  function chill(active) {
+    if (!ready()) return;
+    var tick = Math.floor(context.currentTime * 2.5);
+    if (active && tick !== lastChill) {
+      lastChill = tick;
+      tone(720, 540, 0.05, 0.07);
+    }
+    if (!active) lastChill = -1;
+  }
+  function stop() { lastChill = -1; }
+
+  Audio.unlock = unlock;
+  Audio.setMuted = setMuted;
+  Audio.jump = jump;
+  Audio.block = block;
+  Audio.fish = fish;
+  Audio.reverse = reverse;
+  Audio.door = door;
+  Audio.clear = clear;
+  Audio.fall = fall;
+  Audio.freeze = freeze;
+  Audio.caught = caught;
+  Audio.extraLife = extraLife;
+  Audio.chill = chill;
+  Audio.stop = stop;
+  FB.Audio = Audio;
+})();
+
+</script>
+  <script>
+(function () {
+  'use strict';
+
+  var FB = window.FB = window.FB || {};
+  var keys = Object.create(null);
+  var buttonKeys = Object.create(null);
+  var pointers = new Map();
+  var callback = function () {};
+  var initialized = false;
+  var active = true;
+  var padStart = false;
+  var skipPadAction = false;
+  var state = { left: false, right: false, up: false, down: false, fire: false };
+  var keyDirections = {
+    ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
+    ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
+    Space: 'fire', KeyZ: 'fire', KeyX: 'fire', KeyK: 'fire'
+  };
+  var actions = {
+    Enter: 'start', KeyP: 'pause', KeyR: 'reset', KeyM: 'mute',
+    KeyC: 'color', KeyL: 'difficulty', KeyF: 'fullscreen',
+    Digit1: 'select1', Digit2: 'select2', Digit3: 'select3', Digit4: 'select4',
+    Numpad1: 'select1', Numpad2: 'select2', Numpad3: 'select3', Numpad4: 'select4'
+  };
+
+  function unlockAudio() {
+    if (FB.Audio) FB.Audio.unlock();
+  }
+
+  function editable(target) {
+    return !!(target && (target.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName)));
+  }
+
+  function nativeButtonKey(event) {
+    return (event.code === 'Enter' || event.code === 'Space') && event.target.closest && event.target.closest('button, a, [role="button"]');
+  }
+
+  function heldClasses() {
+    document.querySelectorAll('#pad [data-dir], #pad [data-control="fire"]').forEach(function (button) {
+      var control = button.dataset.dir || 'fire';
+      var held = false;
+      pointers.forEach(function (pointer) { if (pointer.control === control) held = true; });
+      Object.keys(buttonKeys).forEach(function (code) { if (buttonKeys[code] === control) held = true; });
+      button.classList.toggle('held', held);
+    });
+  }
+
+  function releasePointer(event) {
+    if (pointers.delete(event.pointerId)) heldClasses();
+  }
+
+  function pointerControl(element, control) {
+    element.addEventListener('pointerdown', function (event) {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      event.preventDefault();
+      unlockAudio();
+      if (event.pointerType !== 'mouse') document.body.classList.add('touch');
+      pointers.set(event.pointerId, { control: control, direction: control !== 'fire' });
+      try { element.setPointerCapture(event.pointerId); } catch (error) { /* A canceled pointer cannot be captured. */ }
+      if (element.id === 'screen') element.focus({ preventScroll: true });
+      heldClasses();
+    });
+    element.addEventListener('pointermove', function (event) {
+      var pointer = pointers.get(event.pointerId);
+      if (!pointer || !pointer.direction) return;
+      var hovered = document.elementFromPoint(event.clientX, event.clientY);
+      var direction = hovered && hovered.closest('#pad [data-dir]');
+      pointer.control = direction ? direction.dataset.dir : null;
+      heldClasses();
+    });
+    element.addEventListener('pointerup', releasePointer);
+    element.addEventListener('pointercancel', releasePointer);
+    element.addEventListener('lostpointercapture', releasePointer);
+    element.addEventListener('contextmenu', function (event) { event.preventDefault(); });
+    if (element.id !== 'screen') {
+      element.addEventListener('keydown', function (event) {
+        if (event.code !== 'Space' && event.code !== 'Enter') return;
+        event.preventDefault();
+        unlockAudio();
+        buttonKeys[control + event.code] = control;
+        heldClasses();
+      });
+      element.addEventListener('keyup', function (event) { delete buttonKeys[control + event.code]; heldClasses(); });
+      element.addEventListener('blur', function () {
+        delete buttonKeys[control + 'Space'];
+        delete buttonKeys[control + 'Enter'];
+        heldClasses();
+      });
+    }
+  }
+
+  function init(onAction) {
+    callback = typeof onAction === 'function' ? onAction : callback;
+    if (initialized) return;
+    initialized = true;
+    active = !document.hidden;
+    if (navigator.maxTouchPoints > 0 || window.matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch');
+    window.addEventListener('keydown', function (event) {
+      if (editable(event.target) || nativeButtonKey(event) || event.altKey || event.ctrlKey || event.metaKey) return;
+      var direction = keyDirections[event.code];
+      var action = actions[event.code];
+      if (!direction && !action) return;
+      event.preventDefault();
+      unlockAudio();
+      if (direction) keys[event.code] = true;
+      if (action && !event.repeat && !keys[event.code]) {
+        keys[event.code] = true;
+        callback(action);
+      }
+    });
+    window.addEventListener('keyup', function (event) {
+      if (keys[event.code]) delete keys[event.code];
+    });
+    window.addEventListener('blur', function () {
+      active = false;
+      clear();
+    });
+    window.addEventListener('focus', function () { active = true; skipPadAction = true; });
+    document.addEventListener('visibilitychange', function () {
+      active = !document.hidden;
+      if (!active) clear();
+      else skipPadAction = true;
+    });
+    window.addEventListener('pointerup', releasePointer);
+    window.addEventListener('pointercancel', releasePointer);
+    window.addEventListener('gamepaddisconnected', function () { padStart = false; });
+    document.querySelectorAll('[data-action]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        unlockAudio();
+        callback(button.dataset.action);
+      });
+    });
+    document.querySelectorAll('#pad [data-dir]').forEach(function (button) { pointerControl(button, button.dataset.dir); });
+    document.querySelectorAll('[data-control="fire"]').forEach(function (button) { pointerControl(button, 'fire'); });
+    var canvas = document.getElementById('screen');
+    if (canvas) pointerControl(canvas, 'fire');
+  }
+
+  function poll() {
+    state.left = state.right = state.up = state.down = state.fire = false;
+    if (!active || document.hidden) return state;
+    Object.keys(keys).forEach(function (code) {
+      if (keyDirections[code]) state[keyDirections[code]] = true;
+    });
+    Object.keys(buttonKeys).forEach(function (code) { state[buttonKeys[code]] = true; });
+    pointers.forEach(function (pointer) { if (pointer.control) state[pointer.control] = true; });
+    var start = false;
+    var gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (var i = 0; i < gamepads.length; i++) {
+      var pad = gamepads[i];
+      if (!pad || !pad.connected) continue;
+      var pressed = function (index) { return !!(pad.buttons[index] && pad.buttons[index].pressed); };
+      var x = pad.axes[0] || 0;
+      var y = pad.axes[1] || 0;
+      state.left = state.left || x < -0.22 || pressed(14);
+      state.right = state.right || x > 0.22 || pressed(15);
+      state.up = state.up || y < -0.22 || pressed(12);
+      state.down = state.down || y > 0.22 || pressed(13);
+      state.fire = state.fire || pressed(0) || pressed(1) || pressed(2) || pressed(7);
+      start = start || pressed(9);
+    }
+    if (start && !padStart && !skipPadAction) {
+      unlockAudio();
+      callback('start');
+    }
+    if (state.fire) unlockAudio();
+    padStart = start;
+    skipPadAction = false;
+    return state;
+  }
+
+  function clear() {
+    keys = Object.create(null);
+    buttonKeys = Object.create(null);
+    pointers.clear();
+    state.left = state.right = state.up = state.down = state.fire = false;
+    padStart = false;
+    skipPadAction = true;
+    heldClasses();
+  }
+
+  FB.Input = { state: state, init: init, poll: poll, clear: clear };
+})();
+
+</script>
+  <script>
+window.FB = window.FB || {};
+
+(function (FB) {
+  'use strict';
+
+  const C = FB.Config;
+  const T = C.TUNE;
+  const W = FB.World;
+  const silent = new Proxy({}, { get: () => () => {} });
+  const controls = ['left', 'right', 'up', 'down', 'fire'];
+
+  function clamp(value, low, high) {
+    return Math.max(low, Math.min(high, value));
+  }
+
+  function modeLabel(mode) {
+    const advanced = mode >= 3;
+    const pair = C.twoPlayers(mode);
+    return `Jogo ${mode} · ${advanced ? 'avançado' : 'regular'}, ${pair ? 'dois jogadores' : 'um jogador'}`;
+  }
+
+  // The simulation never touches the DOM. Coordinates are Atari pixels.
+  class Game {
+    constructor(options = {}) {
+      this.audio = options.audio || silent;
+      this.onScore = options.onScore || (() => {});
+      this.expertLever = false;
+      this.gameMode = 1;
+      this.player = 0;
+      this.players = [];
+      this.phase = 'title';
+      this.previousPhase = 'playing';
+      this.reason = '';
+      this.time = 0;
+      this.highScore = 0;
+      this.startArmed = true;
+      this.banner = '';
+      this.lastBonus = 0;
+      this.magicFish = false;
+      this.badge = false;
+      this.level = 1;
+      this.score = 0;
+      this.lives = T.startLives;
+      this.nextExtraLife = T.extraLifeEvery;
+      this.blocks = 0;
+      this.degrees = C.startDegrees(1);
+      this.lane = 0;
+      this.x = T.startX;
+      this.facing = 1;
+      this.jump = null;
+      this.hopLock = 0;
+      this.fireLatch = false;
+      this.clearTimer = 0;
+      this.deathTimer = 0;
+      this.rows = [];
+      this.enemies = [];
+      this.fish = [];
+      this.bear = null;
+      this.preview();
+    }
+
+    preview() {
+      this.level = C.startingLevel(this.gameMode);
+      this.blocks = 0;
+      this.degrees = C.startDegrees(this.level);
+      this.lane = 0;
+      this.x = 36;
+      this.facing = 1;
+      this.jump = null;
+      this.loadArctic();
+    }
+
+    loadArctic() {
+      const arctic = W.create(this.level);
+      this.rows = arctic.rows;
+      this.enemies = arctic.enemies;
+      this.fish = arctic.fish;
+      this.bear = arctic.bear;
+    }
+
+    capture() {
+      return {
+        score: this.score,
+        lives: this.lives,
+        level: this.level,
+        nextExtraLife: this.nextExtraLife,
+      };
+    }
+
+    displayedDegrees() {
+      return Math.max(0, Math.ceil(this.degrees - 1e-9));
+    }
+
+    doorOpen() {
+      return this.blocks >= T.blocksNeeded;
+    }
+
+    inDoor() {
+      return this.x >= T.doorX && this.x <= T.doorX + T.doorW;
+    }
+
+    inHideout() {
+      return this.lane === 5 && this.x <= T.hideout;
+    }
+
+    onIce() {
+      return this.lane >= 1 && this.lane <= 4;
+    }
+
+    rowOf(lane) {
+      return this.rows[lane - 1];
+    }
+
+    pieces(row) {
+      return W.segments(row.pattern, row.offset);
+    }
+
+    supported(row, x, half) {
+      return W.feetOn(this.pieces(row), x, half == null ? T.half : half);
+    }
+
+    surface(lane) {
+      const spec = C.LANES[lane];
+      // The upper bank is drawn under the score, so Bailey stands on its lower edge.
+      if (lane === 5) return spec.top + spec.height - 2;
+      return spec.top;
+    }
+
+    footY() {
+      if (!this.jump) return this.surface(this.lane);
+      const from = this.surface(this.jump.from);
+      const to = this.surface(this.jump.to);
+      const u = clamp(this.jump.t / this.jump.duration, 0, 1);
+      return from + (to - from) * u - Math.sin(u * Math.PI) * 8;
+    }
+
+    start() {
+      this.player = 0;
+      this.level = C.startingLevel(this.gameMode);
+      this.score = 0;
+      this.lives = T.startLives;
+      this.nextExtraLife = T.extraLifeEvery;
+      this.magicFish = false;
+      this.badge = false;
+      this.reason = '';
+      this.banner = '';
+      this.lastBonus = 0;
+      this.players = [this.capture()];
+      if (C.twoPlayers(this.gameMode)) this.players.push(this.capture());
+      this.beginRound();
+      this.phase = 'ready';
+      this.audio.stop();
+    }
+
+    beginRound() {
+      this.blocks = 0;
+      this.degrees = C.startDegrees(this.level);
+      this.lane = 0;
+      this.x = T.startX;
+      this.facing = 1;
+      this.jump = null;
+      this.hopLock = 0;
+      this.fireLatch = false;
+      this.badge = this.level > 20;
+      this.loadArctic();
+    }
+
+    action(action) {
+      if (action === 'start') {
+        if (this.phase === 'title' || this.phase === 'gameover') this.start();
+        else if (this.phase === 'ready') this.phase = 'playing';
+        else this.togglePause();
+      } else if (action === 'pause') this.togglePause();
+      else if (action === 'reset') this.start();
+      else if (action === 'difficulty') this.expertLever = !this.expertLever;
+      else if (action === 'select' || /^select[1-4]$/.test(action)) {
+        if (action === 'select') this.gameMode = this.gameMode % 4 + 1;
+        else this.gameMode = Number(action.slice(6));
+        this.start();
+      }
+    }
+
+    togglePause() {
+      if (this.phase === 'paused') this.phase = this.previousPhase;
+      else if (this.phase === 'playing' || this.phase === 'ready' || this.phase === 'dying' || this.phase === 'clear') {
+        this.previousPhase = this.phase;
+        this.phase = 'paused';
+        this.audio.stop();
+      }
+    }
+
+    scorePoints(points) {
+      if (!points) return;
+      this.score = Math.min(T.scoreCap, this.score + points);
+      while (this.score >= this.nextExtraLife) {
+        this.nextExtraLife += T.extraLifeEvery;
+        if (this.lives < T.maxLives) {
+          this.lives += 1;
+          this.audio.extraLife();
+        }
+      }
+      if (this.score >= T.magicFishScore) this.magicFish = true;
+      if (this.score > this.highScore) {
+        this.highScore = this.score;
+        this.onScore(this.score);
+      }
+    }
+
+    addBlock() {
+      if (this.blocks >= T.blocksNeeded) return;
+      this.blocks += 1;
+      this.scorePoints(C.icePoints(this.level));
+      this.audio.block();
+      if (this.blocks === T.blocksNeeded) this.audio.door();
+    }
+
+    reverse() {
+      let acted = false;
+      if (this.onIce()) {
+        this.rowOf(this.lane).dir *= -1;
+        acted = true;
+      }
+      if (this.bear) {
+        this.bear.dir *= -1;
+        acted = true;
+      }
+      if (!acted) return;
+      if (this.blocks > 0 && this.blocks < T.blocksNeeded) this.blocks -= 1;
+      this.audio.reverse();
+    }
+
+    die(reason) {
+      if (this.phase !== 'playing') return;
+      this.phase = 'dying';
+      this.reason = reason;
+      this.deathTimer = T.deathTime;
+      this.lives = Math.max(0, this.lives - 1);
+      this.jump = null;
+      this.audio.stop();
+      if (reason === 'frio') this.audio.freeze();
+      else if (reason === 'urso') this.audio.caught();
+      else this.audio.fall();
+    }
+
+    resumeLife() {
+      this.players[this.player] = this.capture();
+      if (C.twoPlayers(this.gameMode)) {
+        const other = 1 - this.player;
+        if (this.players[other] && this.players[other].lives > 0) this.player = other;
+      }
+      const builder = this.players[this.player];
+      if (!builder || builder.lives <= 0) {
+        this.phase = 'gameover';
+        this.startArmed = false;
+        this.audio.stop();
+        return;
+      }
+      this.score = builder.score;
+      this.lives = builder.lives;
+      this.level = builder.level;
+      this.nextExtraLife = builder.nextExtraLife;
+      this.magicFish = this.score >= T.magicFishScore;
+      this.beginRound();
+      this.phase = 'ready';
+    }
+
+    finishLevel() {
+      const shown = this.displayedDegrees();
+      const bonus = C.enterPoints(this.level) + C.degreePoints(this.level, shown);
+      this.lastBonus = bonus;
+      this.banner = `BONUS ${bonus}`;
+      this.scorePoints(bonus);
+      this.phase = 'clear';
+      this.clearTimer = T.clearTime;
+      this.jump = null;
+      this.audio.clear();
+    }
+
+    nextLevel() {
+      this.level += 1;
+      this.beginRound();
+      this.phase = 'playing';
+      this.players[this.player] = this.capture();
+    }
+
+    startJump(direction) {
+      const next = this.lane + direction;
+      if (next < 0 || next > 5) return;
+      this.jump = { from: this.lane, to: next, t: 0, duration: T.jumpTime };
+      this.hopLock = T.jumpTime;
+      this.audio.jump();
+    }
+
+    enemyHit(rowIndex, x) {
+      for (let i = 0; i < this.enemies.length; i++) {
+        const enemy = this.enemies[i];
+        if (enemy.row !== rowIndex) continue;
+        if (Math.abs(W.wrapDelta(x, enemy.x)) < 8) return true;
+      }
+      return false;
+    }
+
+    bearHit() {
+      if (!this.bear || this.lane !== 5 || this.inHideout()) return false;
+      return Math.abs(this.x - this.bear.x) < 10;
+    }
+
+    tryFish() {
+      if (!this.jump) return;
+      const low = Math.min(this.jump.from, this.jump.to);
+      const high = Math.max(this.jump.from, this.jump.to);
+      for (let i = 0; i < this.fish.length; i++) {
+        const fish = this.fish[i];
+        if (!fish.alive || fish.gap < low || fish.gap >= high) continue;
+        if (Math.abs(W.wrapDelta(this.x, fish.x)) < 9) {
+          fish.alive = false;
+          fish.respawn = 3.4;
+          this.scorePoints(T.fishScore);
+          this.audio.fish();
+        }
+      }
+    }
+
+    land() {
+      const lane = this.lane;
+      if (lane === 0 || lane === 5) {
+        if (lane === 5 && this.doorOpen() && this.inDoor()) {
+          this.finishLevel();
+          return;
+        }
+        if (this.bearHit()) this.die('urso');
+        return;
+      }
+      const row = this.rowOf(lane);
+      if (!this.supported(row, this.x)) {
+        this.die('mar');
+        return;
+      }
+      if (this.enemyHit(lane - 1, this.x)) {
+        this.die('criatura');
+        return;
+      }
+      if (!row.white) return;
+      row.white = false;
+      this.addBlock();
+      if (this.phase !== 'playing') return;
+      if (this.rows.every((item) => !item.white)) {
+        for (let i = 0; i < this.rows.length; i++) this.rows[i].white = true;
+      }
+    }
+
+    drift(dt) {
+      for (let i = 0; i < this.rows.length; i++) {
+        const row = this.rows[i];
+        row.offset = W.wrap(row.offset + row.dir * row.speed * dt);
+      }
+      for (let i = 0; i < this.fish.length; i++) {
+        const fish = this.fish[i];
+        fish.x = W.wrap(fish.x + fish.dir * fish.speed * dt);
+      }
+    }
+
+    moveHazards(dt) {
+      for (let i = 0; i < this.enemies.length; i++) {
+        const enemy = this.enemies[i];
+        enemy.timer += dt;
+        enemy.paused = enemy.type !== 'goose' && (enemy.timer % 1.8) > 1.45;
+        if (!enemy.paused) enemy.x = W.wrap(enemy.x + enemy.dir * enemy.speed * dt);
+      }
+      for (let i = 0; i < this.fish.length; i++) {
+        const fish = this.fish[i];
+        if (!fish.alive) {
+          fish.respawn -= dt;
+          if (fish.respawn <= 0) {
+            fish.alive = true;
+            fish.x = W.wrap(fish.x + 83);
+          }
+          continue;
+        }
+        fish.x = W.wrap(fish.x + fish.dir * fish.speed * dt);
+      }
+      if (this.bear) {
+        this.bear.x += this.bear.dir * this.bear.speed * dt;
+        if (this.bear.x <= T.bearMinX) {
+          this.bear.x = T.bearMinX;
+          this.bear.dir = 1;
+        } else if (this.bear.x >= T.bearMaxX) {
+          this.bear.x = T.bearMaxX;
+          this.bear.dir = -1;
+        }
+      }
+    }
+
+    step(dt, input = {}) {
+      if (!Number.isFinite(dt) || dt <= 0 || this.phase === 'paused') return;
+      while (dt > 1e-8) {
+        const part = Math.min(dt, 1 / 120);
+        this.advance(part, input);
+        dt -= part;
+      }
+    }
+
+    advance(dt, input) {
+      this.time += dt;
+      if (this.phase === 'title' || this.phase === 'gameover') {
+        this.drift(dt);
+        if (!input.fire) this.startArmed = true;
+        if (input.fire && this.startArmed) {
+          this.start();
+          this.fireLatch = true;
+        } else return;
+      }
+      if (this.phase === 'ready') {
+        if (!controls.some((key) => input[key])) return;
+        this.phase = 'playing';
+        if (input.fire) this.fireLatch = true;
+      }
+      if (this.phase === 'dying') {
+        this.deathTimer -= dt;
+        if (this.deathTimer <= 0) this.resumeLife();
+        return;
+      }
+      if (this.phase === 'clear') {
+        this.clearTimer -= dt;
+        if (this.clearTimer <= 0) this.nextLevel();
+        return;
+      }
+      if (this.phase !== 'playing') return;
+
+      this.degrees -= C.degreeRate(this.level) * dt;
+      if (this.degrees <= 0) {
+        this.degrees = 0;
+        this.die('frio');
+        return;
+      }
+
+      for (let i = 0; i < this.rows.length; i++) {
+        const row = this.rows[i];
+        row.offset = W.wrap(row.offset + row.dir * row.speed * dt);
+      }
+      this.moveHazards(dt);
+
+      const direction = Number(!!input.right) - Number(!!input.left);
+      if (direction) this.facing = direction;
+
+      if (this.jump) {
+        const air = T.airSpeed + (this.level - 1) * T.airPerLevel;
+        this.x = W.wrap(this.x + direction * air * dt);
+        this.tryFish();
+        this.jump.t += dt;
+        if (this.jump.t >= this.jump.duration) {
+          this.lane = this.jump.to;
+          this.jump = null;
+          this.hopLock = (input.up || input.down) ? 1 : 0;
+          this.land();
+        }
+      } else {
+        if (this.lane === 0 || this.lane === 5) {
+          this.x = clamp(this.x + direction * T.walkSpeed * dt, 4, C.W - 4);
+          if (this.phase === 'playing' && this.lane === 5 && this.doorOpen() && this.inDoor()) {
+            this.finishLevel();
+          } else if (this.phase === 'playing' && this.bearHit()) {
+            this.die('urso');
+          }
+        } else {
+          const row = this.rowOf(this.lane);
+          this.x = W.wrap(this.x + row.dir * row.speed * dt + direction * T.walkSpeed * dt);
+          if (!this.supported(row, this.x)) this.die('mar');
+          else if (this.enemyHit(this.lane - 1, this.x)) this.die('criatura');
+        }
+
+        if (this.phase === 'playing') {
+          if (!input.up && !input.down) this.hopLock = 0;
+          if (this.hopLock <= 0) {
+            if (input.up) this.startJump(1);
+            else if (input.down) this.startJump(-1);
+          }
+          if (input.fire && !this.fireLatch) this.reverse();
+        }
+      }
+
+      this.fireLatch = !!input.fire;
+      this.audio.chill(this.phase === 'playing' && this.displayedDegrees() <= 10);
+    }
+  }
+
+  FB.Game = Game;
+  FB.modeLabel = modeLabel;
+
+  FB.boot = function () {
+    const canvas = document.getElementById('screen');
+    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    const frame = document.createElement('canvas');
+    frame.width = C.W;
+    frame.height = C.H;
+    const g = frame.getContext('2d', { alpha: false });
+    const game = new Game({ audio: FB.Audio, onScore: saveRecord });
+    FB.game = game;
+    let muted = false;
+    let monochrome = false;
+    let last = null;
+    let statusText = '';
+    let record = 0;
+    try { record = Number(localStorage.getItem('frostbite2600.highScore')) || 0; } catch (_) { /* Storage is optional. */ }
+    game.highScore = record;
+
+    function saveRecord(score) {
+      try { localStorage.setItem('frostbite2600.highScore', String(score)); } catch (_) { /* Private browsing can deny storage. */ }
+    }
+
+    function label(id, value) {
+      const node = document.getElementById(id);
+      if (node) node.textContent = value;
+    }
+
+    function action(type) {
+      FB.Audio.unlock();
+      if (type === 'mute') {
+        muted = !muted;
+        FB.Audio.setMuted(muted);
+        label('mute-state', muted ? 'Som desligado' : 'Som ligado');
+        const button = document.querySelector('[data-action="mute"]');
+        if (button) button.setAttribute('aria-pressed', String(muted));
+      } else if (type === 'color') {
+        monochrome = !monochrome;
+        canvas.classList.toggle('bw', monochrome);
+        label('tv-state', monochrome ? 'TV em preto e branco' : 'TV colorida');
+        const button = document.querySelector('[data-switch="tv"]');
+        if (button) button.setAttribute('aria-pressed', String(monochrome));
+      } else if (type === 'fullscreen') {
+        const tv = document.querySelector('.tv');
+        if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+        else tv.requestFullscreen?.().catch(() => {});
+      } else {
+        game.action(type);
+        label('diff-state', game.expertLever ? 'Alavanca A · sem efeito no cartucho' : 'Alavanca B · sem efeito no cartucho');
+        label('game-state', modeLabel(game.gameMode));
+        const button = document.querySelector('[data-switch="difficulty"]');
+        if (button) button.setAttribute('aria-pressed', String(game.expertLever));
+      }
+      syncStatus();
+    }
+    FB.Input.init(action);
+
+    function pauseOnLeave() {
+      FB.Input.clear();
+      if (game.phase === 'playing' || game.phase === 'dying' || game.phase === 'clear') game.togglePause();
+      FB.Audio.stop();
+      last = null;
+      syncStatus();
+    }
+    window.addEventListener('blur', pauseOnLeave);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) pauseOnLeave(); });
+
+    function syncStatus() {
+      const cold = game.phase === 'dying' && game.reason === 'frio';
+      const bear = game.phase === 'dying' && game.reason === 'urso';
+      const messages = {
+        title: 'Aperte Enter ou o botão vermelho para começar a construir.',
+        ready: `Jogador ${game.player + 1}. Mova o joystick para saltar no gelo.`,
+        playing: `Jogador ${game.player + 1} no gelo. A temperatura está caindo.`,
+        paused: 'Jogo pausado. Aperte P ou CONTINUAR para voltar ao gelo.',
+        clear: 'Iglu pronto. O bônus de temperatura entrou no placar.',
+        dying: cold ? 'A temperatura chegou a zero.' : bear ? 'O urso expulsou Frostbite Bailey.' : 'Frostbite Bailey caiu no mar Ártico.',
+        gameover: `Fim de jogo. Recorde: ${game.highScore}. Aperte Enter para tentar de novo.`,
+      };
+      if (statusText !== messages[game.phase]) {
+        statusText = messages[game.phase];
+        label('status', statusText);
+      }
+      const pauseLabel = document.getElementById('pause-label');
+      if (pauseLabel) pauseLabel.textContent = game.phase === 'paused' ? 'CONTINUAR' : 'PAUSA';
+      const pause = document.getElementById('pause-button');
+      if (pause) {
+        pause.disabled = game.phase === 'title' || game.phase === 'gameover';
+        pause.setAttribute('aria-pressed', String(game.phase === 'paused'));
+      }
+      const startLabel = document.getElementById('start-label');
+      const starting = game.phase === 'title' || game.phase === 'gameover';
+      if (startLabel) startLabel.textContent = starting ? 'COMEÇAR' : game.phase === 'ready' ? 'SALTAR' : 'REINICIAR';
+      const start = document.getElementById('start-button');
+      if (start) start.setAttribute('data-action', starting || game.phase === 'ready' ? 'start' : 'reset');
+    }
+
+    function outlined(rows, x, y, colors, flip) {
+      sprite(rows, x + 1, y + 1, { 1: '#10141c', 2: '#10141c', 3: '#10141c' }, flip);
+      sprite(rows, x, y, colors, flip);
+    }
+
+    function sprite(rows, x, y, colors, flip) {
+      if (!rows) return;
+      const left = Math.round(x - rows[0].length / 2);
+      const top = Math.round(y - rows.length / 2);
+      for (let row = 0; row < rows.length; row++) {
+        for (let col = 0; col < rows[row].length; col++) {
+          const pixel = rows[row][flip ? rows[row].length - 1 - col : col];
+          if (pixel === '.' || pixel === ' ' || pixel === '0') continue;
+          g.fillStyle = colors[pixel] || colors[1] || '#ffffff';
+          g.fillRect(left + col, top + row, 1, 1);
+        }
+      }
+    }
+
+    function text(value, x, y, color, scale, centered) {
+      const font = FB.Font;
+      value = String(value).toUpperCase();
+      const size = scale || 1;
+      const width = value.length * 6 * size - size;
+      if (centered) x -= width / 2;
+      g.fillStyle = color;
+      for (let i = 0; i < value.length; i++) {
+        const rows = font[value[i]] || font[' '];
+        for (let row = 0; row < rows.length; row++) {
+          for (let col = 0; col < rows[row].length; col++) {
+            if (rows[row][col] === '1') g.fillRect(Math.round(x + col * size), y + row * size, size, size);
+          }
+        }
+        x += 6 * size;
+      }
+    }
+
+    function palette() {
+      return C.palette(game.level);
+    }
+
+    function drawIgloo(colors) {
+      const cell = T.iglooCell;
+      for (let n = 0; n < T.blocksNeeded; n++) {
+        const col = n % 4;
+        const row = Math.floor(n / 4);
+        const x = T.iglooX + col * cell;
+        const y = T.iglooY + (3 - row) * cell;
+        const built = n < game.blocks;
+        const door = game.doorOpen() && row === 0 && (col === 1 || col === 2);
+        if (door) {
+          g.fillStyle = colors.door;
+          g.fillRect(x, y, cell - 1, cell - 1);
+        } else if (built) {
+          g.fillStyle = colors.igloo;
+          g.fillRect(x, y, cell - 1, cell - 1);
+          g.fillStyle = colors.iglooEdge;
+          g.fillRect(x, y + cell - 1, cell - 1, 1);
+        } else {
+          g.fillStyle = colors.iglooEdge;
+          g.fillRect(x, y, cell - 1, 1);
+          g.fillRect(x, y + cell - 2, cell - 1, 1);
+          g.fillRect(x, y, 1, cell - 1);
+          g.fillRect(x + cell - 2, y, 1, cell - 1);
+        }
+      }
+    }
+
+    function render() {
+      const colors = palette();
+      g.fillStyle = colors.water;
+      g.fillRect(0, 0, C.W, C.H);
+
+      const top = C.LANES[5];
+      const bottom = C.LANES[0];
+      g.fillStyle = colors.snow;
+      g.fillRect(0, top.top, C.W, top.height);
+      g.fillRect(0, bottom.top, C.W, bottom.height);
+      g.fillStyle = colors.snowShadow;
+      g.fillRect(0, top.top + top.height - 2, C.W, 2);
+      g.fillRect(0, bottom.top, C.W, 2);
+      g.fillStyle = colors.alcove;
+      g.fillRect(0, top.top + 12, 30, top.height - 12);
+
+      for (let i = 0; i < game.rows.length; i++) {
+        const row = game.rows[i];
+        const lane = C.LANES[i + 1];
+        const pieces = W.segments(row.pattern, row.offset);
+        g.fillStyle = row.white ? colors.ice : colors.iceUsed;
+        for (let p = 0; p < pieces.length; p++) g.fillRect(pieces[p].x, lane.top, pieces[p].w, lane.height - 2);
+        g.fillStyle = row.white ? colors.iceEdge : colors.iceUsedEdge;
+        for (let p = 0; p < pieces.length; p++) g.fillRect(pieces[p].x, lane.top + lane.height - 2, pieces[p].w, 2);
+      }
+
+      for (let i = 0; i < game.fish.length; i++) {
+        const fish = game.fish[i];
+        if (!fish.alive) continue;
+        const lower = C.LANES[fish.gap];
+        const upper = C.LANES[fish.gap + 1];
+        const y = (lower.top + upper.top + upper.height) / 2;
+        sprite(FB.Sprites.fish, fish.x, y, { 1: colors.fish, 2: colors.fishBelly }, fish.dir < 0);
+      }
+
+      for (let i = 0; i < game.enemies.length; i++) {
+        const enemy = game.enemies[i];
+        const lane = C.LANES[enemy.row + 1];
+        const bob = enemy.paused ? -2 : 0;
+        const y = lane.top - 2 + bob;
+        if (enemy.type === 'goose') {
+          const frame = FB.Sprites.gooseFrames[Math.floor(game.time * 8) % 2];
+          outlined(frame, enemy.x, y, { 1: colors.goose, 3: colors.beak }, enemy.dir < 0);
+        } else if (enemy.type === 'crab') {
+          sprite(FB.Sprites.crab, enemy.x, y, { 1: colors.crab, 3: colors.crabDark });
+        } else {
+          const frame = enemy.paused ? FB.Sprites.clamOpen : FB.Sprites.clam;
+          sprite(frame, enemy.x, y, { 1: colors.clamDark, 2: colors.clam });
+        }
+      }
+
+      drawIgloo(colors);
+
+      if (game.bear && game.phase !== 'gameover') {
+        const rows = game.bear.dir < 0 ? FB.Sprites.bearLeft : FB.Sprites.bear;
+        outlined(rows, game.bear.x, game.surface(5) - rows.length / 2, {
+          1: colors.bear, 2: colors.bearDark,
+        });
+      }
+
+      if (game.phase === 'dying') {
+        sprite(FB.Sprites.splash, game.x, game.footY() - 4, { 1: colors.splash, 2: colors.text });
+      } else if (game.phase !== 'gameover') {
+        const jumping = !!game.jump;
+        const left = game.facing < 0;
+        const rows = jumping ? (left ? FB.Sprites.baileyJumpLeft : FB.Sprites.baileyJump) : (left ? FB.Sprites.baileyLeft : FB.Sprites.bailey);
+        const suit = game.player === 1 ? colors.player2 : colors.bailey;
+        outlined(rows, game.x, game.footY() - rows.length / 2, { 1: suit, 2: colors.skin, 3: colors.boot });
+      }
+
+      g.fillStyle = colors.hud;
+      g.fillRect(0, 0, C.W, C.HUD);
+      g.fillStyle = colors.hudLine;
+      g.fillRect(0, C.HUD - 1, C.W, 1);
+      text(String(game.score), 2, 4, colors.score);
+      if (game.magicFish) sprite(FB.Sprites.magic, 46, 8, { 1: colors.fish, 2: colors.fishBelly });
+      text(`F${game.level}`, 54, 4, colors.textDim);
+      const cold = game.displayedDegrees() <= 10 && Math.floor(game.time * 4) % 2 === 0;
+      text(`${game.displayedDegrees()}`, 86, 4, cold ? colors.tempLow : colors.temp);
+      text('°', 86 + String(game.displayedDegrees()).length * 6, 4, cold ? colors.tempLow : colors.temp);
+      const reserves = Math.max(0, game.lives - 1);
+      sprite(FB.Sprites.bailey, 128, 8, { 1: game.player === 1 ? colors.player2 : colors.bailey, 2: colors.skin, 3: colors.boot });
+      text(String(reserves), 136, 4, colors.text);
+      if (game.badge) {
+        g.fillStyle = colors.temp;
+        g.fillRect(150, 4, 6, 6);
+      }
+
+      if (game.phase === 'title' || game.phase === 'gameover' || game.phase === 'paused' || game.phase === 'ready' || game.phase === 'clear') {
+        const title = game.phase === 'title' ? 'FROSTBITE' :
+          game.phase === 'gameover' ? 'FIM DE JOGO' :
+          game.phase === 'paused' ? 'PAUSA' :
+          game.phase === 'clear' ? 'IGLU' :
+          `JOGADOR ${game.player + 1}`;
+        g.fillStyle = 'rgba(8,10,20,0.84)';
+        g.fillRect(10, 70, 140, game.phase === 'title' ? 58 : 40);
+        text(title, 80, 78, colors.text, 1, true);
+        if (game.phase === 'title') text('CARTWRIGHT 1983', 80, 90, '#ffffff', 1, true);
+        const prompt = game.phase === 'paused' ? 'P PARA CONTINUAR' :
+          game.phase === 'clear' ? game.banner :
+          game.phase === 'ready' ? 'MOVA PARA SALTAR' :
+          'ENTER OU BOTAO';
+        text(prompt, 80, game.phase === 'title' ? 104 : 96, '#ffffff', 1, true);
+        if (game.phase === 'title' || game.phase === 'gameover') {
+          text(`RECORDE ${game.highScore}`, 80, game.phase === 'title' ? 116 : 108, colors.textDim, 1, true);
+        }
+      }
+
+      const rect = canvas.getBoundingClientRect();
+      const ratio = Math.min(window.devicePixelRatio || 1, 3);
+      const width = Math.max(160, Math.round(rect.width * ratio));
+      const height = Math.max(192, Math.round(rect.height * ratio));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(frame, 0, 0, width, height);
+      if (height >= C.H * 2) {
+        ctx.fillStyle = 'rgba(0,0,0,0.16)';
+        for (let y = 0; y < C.H; y++) ctx.fillRect(0, Math.floor((y + 1) * height / C.H) - 1, width, 1);
+      }
+    }
+
+    function tick(timestamp) {
+      const input = FB.Input.poll();
+      if (controls.some((key) => input[key])) FB.Audio.unlock();
+      if (last !== null) game.step(Math.min((timestamp - last) / 1000, 0.06), input);
+      last = timestamp;
+      syncStatus();
+      render();
+      requestAnimationFrame(tick);
+    }
+
+    label('game-state', modeLabel(game.gameMode));
+    label('diff-state', 'Alavanca B · sem efeito no cartucho');
+    label('tv-state', 'TV colorida');
+    label('mute-state', 'Som ligado');
+    syncStatus();
+    render();
+    requestAnimationFrame(tick);
+  };
+})(window.FB);
+
+</script>
+  <script>window.FB.boot();</script>
+</body>
+</html>
